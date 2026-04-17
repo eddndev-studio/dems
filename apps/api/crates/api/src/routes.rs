@@ -10,6 +10,7 @@ use crate::state::AppState;
 mod admin_assignments;
 mod admin_editions;
 mod admin_prototipos;
+mod admin_results;
 mod admin_rubrics;
 mod admin_users;
 mod auth_routes;
@@ -81,6 +82,10 @@ pub fn router(state: AppState) -> Router {
             get(admin_rubrics::get_by_id)
                 .patch(admin_rubrics::patch)
                 .delete(admin_rubrics::delete_rubric),
+        )
+        .route(
+            "/admin/results/categoria/:slug",
+            get(admin_results::by_categoria),
         )
         .layer(TraceLayer::new_for_http())
         .with_state(state)

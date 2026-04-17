@@ -186,3 +186,86 @@ pub async fn seed_categoria(pool: &PgPool, slug: &str, nombre: &str) -> Uuid {
         .expect("insert categoria");
     id
 }
+
+/// Attach a prototipo to a categoría.
+pub async fn attach_categoria(pool: &PgPool, prototipo_id: Uuid, categoria_id: Uuid) {
+    sqlx::query(r#"INSERT INTO prototipo_categorias (prototipo_id, categoria_id) VALUES ($1, $2)"#)
+        .bind(prototipo_id)
+        .bind(categoria_id)
+        .execute(pool)
+        .await
+        .expect("insert prototipo_categoria");
+}
+
+/// Insert an already-submitted evaluación with the given per-criterion scores.
+/// Bypasses the assignment check — only call this from tests.
+pub async fn seed_submitted_evaluacion(
+    pool: &PgPool,
+    prototipo_id: Uuid,
+    jurado_id: Uuid,
+    template_id: Uuid,
+    scores: &[(Uuid, i32)],
+) -> Uuid {
+    let id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO evaluaciones (id, prototipo_id, jurado_id, template_id, submitted_at)
+           VALUES ($1, $2, $3, $4, NOW())"#,
+    )
+    .bind(id)
+    .bind(prototipo_id)
+    .bind(jurado_id)
+    .bind(template_id)
+    .execute(pool)
+    .await
+    .expect("insert evaluacion");
+
+    for (criterion_id, score) in scores {
+        sqlx::query(
+            r#"INSERT INTO evaluacion_scores (evaluacion_id, criterion_id, score)
+               VALUES ($1, $2, $3)"#,
+        )
+        .bind(id)
+        .bind(criterion_id)
+        .bind(score)
+        .execute(pool)
+        .await
+        .expect("insert evaluacion_score");
+    }
+    id
+}
+
+/// Insert a draft (unsubmitted) evaluación with scores. Bypasses ACL.
+pub async fn seed_draft_evaluacion(
+    pool: &PgPool,
+    prototipo_id: Uuid,
+    jurado_id: Uuid,
+    template_id: Uuid,
+    scores: &[(Uuid, i32)],
+) -> Uuid {
+    let id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO evaluaciones (id, prototipo_id, jurado_id, template_id)
+           VALUES ($1, $2, $3, $4)"#,
+    )
+    .bind(id)
+    .bind(prototipo_id)
+    .bind(jurado_id)
+    .bind(template_id)
+    .execute(pool)
+    .await
+    .expect("insert evaluacion");
+
+    for (criterion_id, score) in scores {
+        sqlx::query(
+            r#"INSERT INTO evaluacion_scores (evaluacion_id, criterion_id, score)
+               VALUES ($1, $2, $3)"#,
+        )
+        .bind(id)
+        .bind(criterion_id)
+        .bind(score)
+        .execute(pool)
+        .await
+        .expect("insert evaluacion_score");
+    }
+    id
+}
