@@ -12,6 +12,7 @@ rust-version = "1.80"
 # async
 tokio = { version = "1.40", features = ["full"] }
 futures = "0.3"
+async-trait = "0.1"
 
 # web
 axum = { version = "0.7", features = ["macros", "multipart"] }

@@ -9,6 +9,7 @@ use dems_core::models::UserRole;
 
 use crate::auth::{self, TokenKind};
 use crate::error::{ApiError, ApiResult};
+use crate::extractors::CurrentUser;
 use crate::password;
 use crate::state::AppState;
 
@@ -24,11 +25,11 @@ pub struct LoginRequest {
 pub struct LoginResponse {
     pub access_token: String,
     pub refresh_token: String,
-    pub user: LoginUser,
+    pub user: UserView,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct LoginUser {
+pub struct UserView {
     pub id: Uuid,
     pub email: String,
     pub full_name: String,
@@ -42,8 +43,6 @@ pub async fn login(
     req.validate()
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
-    // Fetch user + hash. Unknown email vs. wrong password collapse to the
-    // same 401 so attackers can't enumerate users.
     let row = sqlx::query_as::<_, (Uuid, String, String, UserRole, String, bool)>(
         r#"SELECT id, email, full_name, role, password_hash, is_active
            FROM users WHERE email = $1"#,
@@ -59,8 +58,7 @@ pub async fn login(
     if !is_active {
         return Err(ApiError::Core(dems_core::CoreError::Unauthorized));
     }
-    let ok = password::verify(&req.password, &password_hash)
-        .map_err(|e| ApiError::Internal(e))?;
+    let ok = password::verify(&req.password, &password_hash).map_err(ApiError::Internal)?;
     if !ok {
         return Err(ApiError::Core(dems_core::CoreError::Unauthorized));
     }
@@ -85,11 +83,20 @@ pub async fn login(
     Ok(Json(LoginResponse {
         access_token,
         refresh_token,
-        user: LoginUser {
+        user: UserView {
             id,
             email,
             full_name,
             role,
         },
     }))
+}
+
+pub async fn me(user: CurrentUser) -> Json<UserView> {
+    Json(UserView {
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+    })
 }
