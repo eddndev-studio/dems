@@ -23,7 +23,9 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/admin/rubric-templates/:id",
-            get(admin_rubrics::get_by_id).patch(admin_rubrics::patch),
+            get(admin_rubrics::get_by_id)
+                .patch(admin_rubrics::patch)
+                .delete(admin_rubrics::delete_rubric),
         )
         .layer(TraceLayer::new_for_http())
         .with_state(state)

@@ -469,3 +469,41 @@ pub async fn patch(
 
     load_tree(&state, id).await.map(Json)
 }
+
+// ---------------------------------------------------------------------------
+// Delete
+// ---------------------------------------------------------------------------
+
+pub async fn delete_rubric(
+    State(state): State<AppState>,
+    _: RequireAdmin,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    // Si existe alguna evaluación que referencia esta rúbrica, preservamos
+    // la auditoría: borrar rompería el historial de puntajes. El admin
+    // puede archivar con PATCH { activo: false } en su lugar.
+    let used: bool = sqlx::query_scalar(
+        r#"SELECT EXISTS (SELECT 1 FROM evaluaciones WHERE template_id = $1)"#,
+    )
+    .bind(id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    if used {
+        return Err(ApiError::Core(dems_core::CoreError::Conflict(
+            "rubric has evaluations; archive it by setting activo=false".into(),
+        )));
+    }
+
+    let affected = sqlx::query("DELETE FROM rubric_templates WHERE id = $1")
+        .bind(id)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+
+    if affected.rows_affected() == 0 {
+        return Err(ApiError::Core(dems_core::CoreError::NotFound));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
