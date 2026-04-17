@@ -87,6 +87,10 @@ pub fn router(state: AppState) -> Router {
             "/admin/results/categoria/:slug",
             get(admin_results::by_categoria),
         )
+        .route(
+            "/admin/evaluaciones/:id/reopen",
+            post(evaluacion_routes::reopen),
+        )
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

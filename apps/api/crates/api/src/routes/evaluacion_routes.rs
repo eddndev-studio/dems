@@ -15,7 +15,7 @@ use validator::Validate;
 use dems_core::models::UserRole;
 
 use crate::error::{ApiError, ApiResult};
-use crate::extractors::CurrentUser;
+use crate::extractors::{CurrentUser, RequireAdmin};
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -417,6 +417,41 @@ pub async fn submit(
     }
 
     sqlx::query("UPDATE evaluaciones SET submitted_at = NOW() WHERE id = $1")
+        .bind(id)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+
+    load_evaluacion(&state, id).await.map(Json)
+}
+
+// ---------------------------------------------------------------------------
+// POST /admin/evaluaciones/:id/reopen
+// ---------------------------------------------------------------------------
+
+/// Admin pone `submitted_at = NULL` para que el jurado dueño pueda corregir
+/// la evaluación. Los scores no se tocan; reabrir un draft es 409 (no hay
+/// nada que reabrir).
+pub async fn reopen(
+    State(state): State<AppState>,
+    _: RequireAdmin,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<EvaluacionView>> {
+    let submitted_at: Option<DateTime<Utc>> =
+        sqlx::query_scalar("SELECT submitted_at FROM evaluaciones WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?
+            .ok_or(ApiError::Core(dems_core::CoreError::NotFound))?;
+
+    if submitted_at.is_none() {
+        return Err(ApiError::Core(dems_core::CoreError::Conflict(
+            "evaluation is not submitted; nothing to reopen".into(),
+        )));
+    }
+
+    sqlx::query("UPDATE evaluaciones SET submitted_at = NULL WHERE id = $1")
         .bind(id)
         .execute(&state.pool)
         .await
