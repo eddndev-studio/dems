@@ -73,6 +73,18 @@ fn role_as_sql(r: UserRole) -> &'static str {
 // Create
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    post,
+    path = "/admin/users",
+    tag = "admin/users",
+    request_body = CreateUserRequest,
+    responses(
+        (status = 201, description = "Usuario creado", body = UserView),
+        (status = 409, description = "Email ya registrado"),
+        (status = 422, description = "Validación falló"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn create(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -113,6 +125,17 @@ pub async fn create(
 // List
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    get,
+    path = "/admin/users",
+    tag = "admin/users",
+    params(
+        ("role" = Option<UserRole>, Query, description = "Filtra por rol"),
+        ("is_active" = Option<bool>, Query, description = "Filtra por activo"),
+    ),
+    responses((status = 200, description = "Lista", body = [UserView])),
+    security(("bearer_auth" = [])),
+)]
 pub async fn list(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -137,6 +160,17 @@ pub async fn list(
 // Get by id
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    get,
+    path = "/admin/users/{id}",
+    tag = "admin/users",
+    params(("id" = Uuid, Path, description = "ID")),
+    responses(
+        (status = 200, description = "Usuario", body = UserView),
+        (status = 404, description = "No encontrado"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn get_by_id(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -158,6 +192,18 @@ pub async fn get_by_id(
 // Patch
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    patch,
+    path = "/admin/users/{id}",
+    tag = "admin/users",
+    params(("id" = Uuid, Path, description = "ID")),
+    request_body = PatchUserRequest,
+    responses(
+        (status = 200, description = "Actualizado", body = UserView),
+        (status = 404, description = "No encontrado"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn patch(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -191,6 +237,18 @@ pub async fn patch(
 // Reset password
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    put,
+    path = "/admin/users/{id}/password",
+    tag = "admin/users",
+    params(("id" = Uuid, Path, description = "ID del usuario")),
+    request_body = ResetPasswordRequest,
+    responses(
+        (status = 204, description = "Password reseteada"),
+        (status = 404, description = "No encontrado"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn reset_password(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -218,6 +276,18 @@ pub async fn reset_password(
 // Delete
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    delete,
+    path = "/admin/users/{id}",
+    tag = "admin/users",
+    params(("id" = Uuid, Path, description = "ID")),
+    responses(
+        (status = 204, description = "Borrado"),
+        (status = 404, description = "No encontrado"),
+        (status = 409, description = "Tiene evaluaciones — desactivar en su lugar"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn delete(
     State(state): State<AppState>,
     _: RequireAdmin,

@@ -53,6 +53,18 @@ pub struct DeleteParams {
 // Create (idempotent)
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    post,
+    path = "/admin/assignments",
+    tag = "admin/assignments",
+    request_body = CreateAssignmentRequest,
+    responses(
+        (status = 201, body = AssignmentView),
+        (status = 200, description = "Idempotente — ya existía", body = AssignmentView),
+        (status = 422, description = "user no jurado, edición distinta o IDs desconocidos"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn create(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -152,6 +164,14 @@ pub async fn create(
 // List for a prototipo
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    get,
+    path = "/admin/prototipos/{id}/assignments",
+    tag = "admin/assignments",
+    params(("id" = Uuid, Path, description = "ID del prototipo")),
+    responses((status = 200, body = [AssignmentWithJuradoView])),
+    security(("bearer_auth" = [])),
+)]
 pub async fn list_for_prototipo(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -190,6 +210,22 @@ pub async fn list_for_prototipo(
 // Delete (compound key via query string)
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    delete,
+    path = "/admin/assignments",
+    tag = "admin/assignments",
+    params(
+        ("jurado_id" = Uuid, Query, description = "ID del jurado"),
+        ("prototipo_id" = Uuid, Query, description = "ID del prototipo"),
+        ("template_id" = Uuid, Query, description = "ID del template"),
+    ),
+    responses(
+        (status = 204),
+        (status = 404),
+        (status = 409, description = "Existe evaluación para esta tripleta"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn delete(
     State(state): State<AppState>,
     _: RequireAdmin,

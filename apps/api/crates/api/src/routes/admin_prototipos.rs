@@ -84,6 +84,18 @@ pub struct ListParams {
 // Create
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    post,
+    path = "/admin/prototipos",
+    tag = "admin/prototipos",
+    request_body = CreatePrototipoRequest,
+    responses(
+        (status = 201, body = PrototipoView),
+        (status = 409, description = "folio duplicado en la edición"),
+        (status = 422, description = "Validación falló"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn create(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -202,6 +214,14 @@ pub struct PrototipoSummary {
     pub created_at: DateTime<Utc>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/admin/prototipos",
+    tag = "admin/prototipos",
+    params(("edition_id" = Option<Uuid>, Query, description = "Filtrar por edición")),
+    responses((status = 200, body = [PrototipoSummary])),
+    security(("bearer_auth" = [])),
+)]
 pub async fn list(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -224,6 +244,17 @@ pub async fn list(
 // Get by id
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    get,
+    path = "/admin/prototipos/{id}",
+    tag = "admin/prototipos",
+    params(("id" = Uuid, Path, description = "ID")),
+    responses(
+        (status = 200, body = PrototipoView),
+        (status = 404),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn get_by_id(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -295,6 +326,18 @@ async fn load_prototipo(state: &AppState, id: Uuid) -> ApiResult<PrototipoView> 
 // Patch
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    patch,
+    path = "/admin/prototipos/{id}",
+    tag = "admin/prototipos",
+    params(("id" = Uuid, Path, description = "ID")),
+    request_body = PatchPrototipoRequest,
+    responses(
+        (status = 200, body = PrototipoView),
+        (status = 404),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn patch(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -331,6 +374,18 @@ pub async fn patch(
 // Delete
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    delete,
+    path = "/admin/prototipos/{id}",
+    tag = "admin/prototipos",
+    params(("id" = Uuid, Path, description = "ID")),
+    responses(
+        (status = 204),
+        (status = 404),
+        (status = 409, description = "Tiene evaluaciones"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn delete(
     State(state): State<AppState>,
     _: RequireAdmin,

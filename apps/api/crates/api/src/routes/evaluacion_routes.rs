@@ -78,6 +78,20 @@ pub struct ScoreView {
 // POST /evaluaciones
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    post,
+    path = "/evaluaciones",
+    tag = "evaluaciones",
+    request_body = CreateEvaluacionRequest,
+    responses(
+        (status = 201, description = "Evaluación creada", body = EvaluacionView),
+        (status = 200, description = "Replay idempotente — devuelve la existente", body = EvaluacionView),
+        (status = 403, description = "Jurado no asignado a (prototipo, template)"),
+        (status = 422, description = "Score fuera de rango o criterio inválido"),
+        (status = 409, description = "Evaluación ya existe para esa terna"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn create(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -235,6 +249,18 @@ pub async fn create(
 // GET /evaluaciones/:id
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    get,
+    path = "/evaluaciones/{id}",
+    tag = "evaluaciones",
+    params(("id" = Uuid, Path, description = "ID de la evaluación")),
+    responses(
+        (status = 200, description = "Evaluación", body = EvaluacionView),
+        (status = 403, description = "No es el dueño ni admin"),
+        (status = 404, description = "No encontrada"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn get_by_id(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -269,6 +295,21 @@ pub struct PatchEvaluacionRequest {
     pub scores: Option<Vec<ScoreInput>>,
 }
 
+#[utoipa::path(
+    patch,
+    path = "/evaluaciones/{id}",
+    tag = "evaluaciones",
+    params(("id" = Uuid, Path, description = "ID de la evaluación")),
+    request_body = PatchEvaluacionRequest,
+    responses(
+        (status = 200, description = "Evaluación actualizada", body = EvaluacionView),
+        (status = 403, description = "No es el dueño"),
+        (status = 404, description = "No encontrada"),
+        (status = 409, description = "Ya enviada — no se puede editar"),
+        (status = 422, description = "Body inválido"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn patch_evaluacion(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -362,6 +403,19 @@ pub async fn patch_evaluacion(
 // POST /evaluaciones/:id/submit
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    post,
+    path = "/evaluaciones/{id}/submit",
+    tag = "evaluaciones",
+    params(("id" = Uuid, Path, description = "ID de la evaluación")),
+    responses(
+        (status = 200, description = "Evaluación enviada", body = EvaluacionView),
+        (status = 403, description = "No es el dueño"),
+        (status = 404, description = "No encontrada"),
+        (status = 409, description = "Ya enviada o algún criterio sin puntuar"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn submit(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -432,6 +486,19 @@ pub async fn submit(
 /// Admin pone `submitted_at = NULL` para que el jurado dueño pueda corregir
 /// la evaluación. Los scores no se tocan; reabrir un draft es 409 (no hay
 /// nada que reabrir).
+#[utoipa::path(
+    post,
+    path = "/admin/evaluaciones/{id}/reopen",
+    tag = "admin/results",
+    params(("id" = Uuid, Path, description = "ID de la evaluación")),
+    responses(
+        (status = 200, description = "Evaluación reabierta", body = EvaluacionView),
+        (status = 403, description = "Sólo admin"),
+        (status = 404, description = "No encontrada"),
+        (status = 409, description = "No está submitted — nada que reabrir"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn reopen(
     State(state): State<AppState>,
     _: RequireAdmin,

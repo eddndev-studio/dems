@@ -4,18 +4,21 @@ use axum::{
 };
 use serde_json::json;
 use tower_http::trace::TraceLayer;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
+use crate::openapi::ApiDoc;
 use crate::state::AppState;
 
-mod admin_assignments;
-mod admin_editions;
-mod admin_prototipos;
-mod admin_results;
-mod admin_rubrics;
-mod admin_users;
-mod auth_routes;
-mod evaluacion_routes;
-mod jurado_routes;
+pub mod admin_assignments;
+pub mod admin_editions;
+pub mod admin_prototipos;
+pub mod admin_results;
+pub mod admin_rubrics;
+pub mod admin_users;
+pub mod auth_routes;
+pub mod evaluacion_routes;
+pub mod jurado_routes;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -95,6 +98,7 @@ pub fn router(state: AppState) -> Router {
             "/admin/evaluaciones/:id/reopen",
             post(evaluacion_routes::reopen),
         )
+        .merge(SwaggerUi::new("/docs").url("/openapi.json", ApiDoc::openapi()))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

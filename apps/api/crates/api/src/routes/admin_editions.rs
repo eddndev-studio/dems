@@ -46,6 +46,17 @@ pub struct PatchEditionRequest {
 // Create
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    post,
+    path = "/admin/editions",
+    tag = "admin/editions",
+    request_body = CreateEditionRequest,
+    responses(
+        (status = 201, body = EditionView),
+        (status = 409, description = "Año duplicado"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn create(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -101,6 +112,13 @@ pub async fn create(
 // List
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    get,
+    path = "/admin/editions",
+    tag = "admin/editions",
+    responses((status = 200, body = [EditionView])),
+    security(("bearer_auth" = [])),
+)]
 pub async fn list(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -119,6 +137,17 @@ pub async fn list(
 // Get by id
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    get,
+    path = "/admin/editions/{id}",
+    tag = "admin/editions",
+    params(("id" = Uuid, Path, description = "ID")),
+    responses(
+        (status = 200, body = EditionView),
+        (status = 404),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn get_by_id(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -140,6 +169,18 @@ pub async fn get_by_id(
 // Patch
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    patch,
+    path = "/admin/editions/{id}",
+    tag = "admin/editions",
+    params(("id" = Uuid, Path, description = "ID")),
+    request_body = PatchEditionRequest,
+    responses(
+        (status = 200, body = EditionView),
+        (status = 404),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn patch(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -199,6 +240,18 @@ pub async fn patch(
 // Delete
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    delete,
+    path = "/admin/editions/{id}",
+    tag = "admin/editions",
+    params(("id" = Uuid, Path, description = "ID")),
+    responses(
+        (status = 204),
+        (status = 404),
+        (status = 409, description = "Tiene rúbricas o prototipos"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn delete(
     State(state): State<AppState>,
     _: RequireAdmin,

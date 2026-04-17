@@ -36,6 +36,17 @@ pub struct UserView {
     pub role: UserRole,
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/login",
+    tag = "auth",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Tokens emitidos", body = LoginResponse),
+        (status = 401, description = "Credenciales inválidas o usuario inactivo"),
+        (status = 400, description = "Body inválido"),
+    ),
+)]
 pub async fn login(
     State(state): State<AppState>,
     Json(req): Json<LoginRequest>,
@@ -92,6 +103,16 @@ pub async fn login(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/me",
+    tag = "auth",
+    responses(
+        (status = 200, description = "Usuario autenticado", body = UserView),
+        (status = 401, description = "Sin token o token inválido"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn me(user: CurrentUser) -> Json<UserView> {
     Json(UserView {
         id: user.id,
@@ -112,6 +133,16 @@ pub struct RefreshResponse {
     pub refresh_token: String,
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/refresh",
+    tag = "auth",
+    request_body = RefreshRequest,
+    responses(
+        (status = 200, description = "Nuevos tokens", body = RefreshResponse),
+        (status = 401, description = "Refresh token inválido o usuario inactivo"),
+    ),
+)]
 pub async fn refresh(
     State(state): State<AppState>,
     Json(req): Json<RefreshRequest>,

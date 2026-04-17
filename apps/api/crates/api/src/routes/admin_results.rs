@@ -63,6 +63,23 @@ pub struct EvaluacionResultView {
     pub submitted_at: DateTime<Utc>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/admin/results/categoria/{slug}",
+    tag = "admin/results",
+    params(
+        ("slug" = String, Path, description = "Slug de la categoría"),
+        ("edition_id" = Uuid, Query, description = "ID de la edición"),
+        ("rubric_type" = Option<String>, Query, description = "exhibicion (default) | memoria"),
+    ),
+    responses(
+        (status = 200, description = "Ranking de prototipos", body = CategoriaResultsView),
+        (status = 400, description = "rubric_type inválido o edition_id ausente"),
+        (status = 403, description = "Sólo admin"),
+        (status = 404, description = "Categoría o edición no encontrada"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn by_categoria(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -236,6 +253,22 @@ pub async fn by_categoria(
 /// CSV con todos los prototipos de la edición. Una fila por (categoría,
 /// prototipo). Promedio sobre evaluaciones submitted del rubric_type
 /// solicitado.
+#[utoipa::path(
+    get,
+    path = "/admin/results/edition/{id}/export.csv",
+    tag = "admin/results",
+    params(
+        ("id" = Uuid, Path, description = "ID de la edición"),
+        ("rubric_type" = Option<String>, Query, description = "exhibicion (default) | memoria"),
+    ),
+    responses(
+        (status = 200, description = "CSV de resultados", content_type = "text/csv"),
+        (status = 400, description = "rubric_type inválido"),
+        (status = 403, description = "Sólo admin"),
+        (status = 404, description = "Edición no encontrada"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn export_csv(
     State(state): State<AppState>,
     _: RequireAdmin,

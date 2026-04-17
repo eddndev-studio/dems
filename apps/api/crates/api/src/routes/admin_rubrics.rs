@@ -116,6 +116,17 @@ fn tipo_as_sql(t: RubricType) -> &'static str {
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/admin/rubric-templates",
+    tag = "admin/rubrics",
+    request_body = CreateRubricRequest,
+    responses(
+        (status = 201, body = RubricTemplateView),
+        (status = 422, description = "Validación falló"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn create(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -288,6 +299,18 @@ pub struct RubricTemplateSummary {
     pub criterion_count: i64,
 }
 
+#[utoipa::path(
+    get,
+    path = "/admin/rubric-templates",
+    tag = "admin/rubrics",
+    params(
+        ("edition_id" = Option<Uuid>, Query, description = "Filtrar por edición"),
+        ("tipo" = Option<RubricType>, Query, description = "Filtrar por tipo"),
+        ("activo" = Option<bool>, Query, description = "Filtrar por activo"),
+    ),
+    responses((status = 200, body = [RubricTemplateSummary])),
+    security(("bearer_auth" = [])),
+)]
 pub async fn list(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -330,6 +353,17 @@ pub async fn list(
 // Get by id (full tree)
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    get,
+    path = "/admin/rubric-templates/{id}",
+    tag = "admin/rubrics",
+    params(("id" = Uuid, Path, description = "ID")),
+    responses(
+        (status = 200, body = RubricTemplateView),
+        (status = 404),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn get_by_id(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -437,6 +471,18 @@ pub struct PatchRubricRequest {
     pub activo: Option<bool>,
 }
 
+#[utoipa::path(
+    patch,
+    path = "/admin/rubric-templates/{id}",
+    tag = "admin/rubrics",
+    params(("id" = Uuid, Path, description = "ID")),
+    request_body = PatchRubricRequest,
+    responses(
+        (status = 200, body = RubricTemplateView),
+        (status = 404),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn patch(
     State(state): State<AppState>,
     _: RequireAdmin,
@@ -476,6 +522,18 @@ pub async fn patch(
 // Delete
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    delete,
+    path = "/admin/rubric-templates/{id}",
+    tag = "admin/rubrics",
+    params(("id" = Uuid, Path, description = "ID")),
+    responses(
+        (status = 204),
+        (status = 404),
+        (status = 409, description = "Hay evaluaciones referenciando — desactivar en su lugar"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn delete_rubric(
     State(state): State<AppState>,
     _: RequireAdmin,

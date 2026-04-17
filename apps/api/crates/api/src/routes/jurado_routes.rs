@@ -36,6 +36,16 @@ pub struct RubricSummary {
     pub tipo: RubricType,
 }
 
+#[utoipa::path(
+    get,
+    path = "/me/asignaciones",
+    tag = "jurado",
+    responses(
+        (status = 200, description = "Asignaciones del jurado autenticado", body = [AsignacionItem]),
+        (status = 401, description = "Sin token o inválido"),
+    ),
+    security(("bearer_auth" = [])),
+)]
 pub async fn list_asignaciones(
     State(state): State<AppState>,
     user: CurrentUser,
