@@ -7,6 +7,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::state::AppState;
 
+mod admin_editions;
 mod admin_rubrics;
 mod auth_routes;
 mod evaluacion_routes;
@@ -31,6 +32,16 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/evaluaciones/:id/submit",
             post(evaluacion_routes::submit),
+        )
+        .route(
+            "/admin/editions",
+            get(admin_editions::list).post(admin_editions::create),
+        )
+        .route(
+            "/admin/editions/:id",
+            get(admin_editions::get_by_id)
+                .patch(admin_editions::patch)
+                .delete(admin_editions::delete),
         )
         .route(
             "/admin/rubric-templates",
