@@ -351,6 +351,73 @@ pub async fn patch_evaluacion(
 }
 
 // ---------------------------------------------------------------------------
+// POST /evaluaciones/:id/submit
+// ---------------------------------------------------------------------------
+
+pub async fn submit(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<EvaluacionView>> {
+    let row = sqlx::query_as::<_, (Uuid, Uuid, Option<DateTime<Utc>>)>(
+        r#"SELECT jurado_id, template_id, submitted_at
+           FROM evaluaciones WHERE id = $1"#,
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?
+    .ok_or(ApiError::Core(dems_core::CoreError::NotFound))?;
+
+    let (jurado_id, template_id, submitted_at) = row;
+    if jurado_id != user.id {
+        return Err(ApiError::Core(dems_core::CoreError::Forbidden));
+    }
+    if submitted_at.is_some() {
+        return Err(ApiError::Core(dems_core::CoreError::Conflict(
+            "evaluation already submitted".into(),
+        )));
+    }
+
+    // Completeness check: every scoring criterion (scale/boolean) in the
+    // rubric must have a score row. text_key criteria are unscored and
+    // therefore don't block submit — they're just aide-memoires for the
+    // final opinion.
+    let unscored: Option<String> = sqlx::query_scalar(
+        r#"
+        SELECT c.texto
+        FROM rubric_criteria c
+        JOIN rubric_sections s ON s.id = c.section_id
+        LEFT JOIN evaluacion_scores es
+          ON es.criterion_id = c.id AND es.evaluacion_id = $1
+        WHERE s.template_id = $2
+          AND c.kind IN ('scale', 'boolean')
+          AND es.criterion_id IS NULL
+        LIMIT 1
+        "#,
+    )
+    .bind(id)
+    .bind(template_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    if let Some(criterion_text) = unscored {
+        return Err(ApiError::Core(dems_core::CoreError::Conflict(format!(
+            "cannot submit: criterion \"{criterion_text}\" is unscored"
+        ))));
+    }
+
+    sqlx::query("UPDATE evaluaciones SET submitted_at = NOW() WHERE id = $1")
+        .bind(id)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+
+    load_evaluacion(&state, id).await.map(Json)
+}
+
+// ---------------------------------------------------------------------------
 // Shared: validate a batch of scores against a rubric template
 // ---------------------------------------------------------------------------
 
