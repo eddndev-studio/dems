@@ -4,9 +4,18 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lib]
+name = "dems_api"
+path = "src/lib.rs"
+
 [[bin]]
 name = "dems-api"
 path = "src/main.rs"
+
+[dev-dependencies]
+axum-test = "17"
+http-body-util = "0.1"
+tower = { workspace = true, features = ["util"] }
 
 [dependencies]
 dems-core = { workspace = true }

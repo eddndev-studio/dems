@@ -1,13 +1,7 @@
 use std::net::SocketAddr;
 
 use anyhow::Context;
-
-mod config;
-mod error;
-mod state;
-mod auth;
-mod password;
-mod routes;
+use dems_api::{config, routes, state};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

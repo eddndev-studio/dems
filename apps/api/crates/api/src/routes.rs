@@ -1,13 +1,19 @@
-use axum::{routing::get, Json, Router};
+use axum::{
+    routing::{get, post},
+    Json, Router,
+};
 use serde_json::json;
 use tower_http::trace::TraceLayer;
 
 use crate::state::AppState;
 
+mod auth_routes;
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
+        .route("/auth/login", post(auth_routes::login))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
