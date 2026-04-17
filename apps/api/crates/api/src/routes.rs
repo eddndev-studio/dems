@@ -7,6 +7,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::state::AppState;
 
+mod admin_assignments;
 mod admin_editions;
 mod admin_prototipos;
 mod admin_rubrics;
@@ -68,6 +69,14 @@ pub fn router(state: AppState) -> Router {
             get(admin_prototipos::get_by_id)
                 .patch(admin_prototipos::patch)
                 .delete(admin_prototipos::delete),
+        )
+        .route(
+            "/admin/prototipos/:id/assignments",
+            get(admin_assignments::list_for_prototipo),
+        )
+        .route(
+            "/admin/assignments",
+            post(admin_assignments::create).delete(admin_assignments::delete),
         )
         .route(
             "/admin/rubric-templates",
