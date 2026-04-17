@@ -6,6 +6,7 @@ mod config;
 mod error;
 mod state;
 mod auth;
+mod password;
 mod routes;
 
 #[tokio::main]
