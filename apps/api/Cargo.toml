@@ -1,0 +1,54 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/api", "crates/seed"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.80"
+
+[workspace.dependencies]
+# async
+tokio = { version = "1.40", features = ["full"] }
+futures = "0.3"
+
+# web
+axum = { version = "0.7", features = ["macros", "multipart"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors", "compression-gzip"] }
+
+# db
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono", "macros", "migrate", "json"] }
+
+# serde
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# ids / time
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# errors / config
+anyhow = "1"
+thiserror = "1"
+dotenvy = "0.15"
+
+# auth
+jsonwebtoken = "9"
+argon2 = "0.5"
+
+# logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# validation
+validator = { version = "0.18", features = ["derive"] }
+
+# openapi
+utoipa = { version = "5", features = ["axum_extras", "uuid", "chrono"] }
+utoipa-axum = "0.1"
+utoipa-swagger-ui = { version = "8", features = ["axum"] }
+
+# internal
+dems-core = { path = "crates/core" }
