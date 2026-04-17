@@ -92,7 +92,10 @@ async fn get_returns_full_tree(pool: PgPool) {
 
     let sections = body["sections"].as_array().unwrap();
     assert_eq!(sections.len(), 2);
-    assert_eq!(sections[0]["nombre"], "Primera", "sections must be sorted by orden");
+    assert_eq!(
+        sections[0]["nombre"], "Primera",
+        "sections must be sorted by orden"
+    );
     assert_eq!(sections[1]["nombre"], "Segunda");
 
     // Criterios dentro de cada sección también ordenados.

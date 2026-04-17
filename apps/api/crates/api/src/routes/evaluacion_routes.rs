@@ -133,18 +133,21 @@ pub async fn create(
         .map_err(|e| ApiError::Internal(e.into()))?;
 
     let id = Uuid::new_v4();
-    let row = sqlx::query_as::<_, (
-        Uuid,
-        Uuid,
-        Uuid,
-        Uuid,
-        Option<DateTime<Utc>>,
-        Option<String>,
-        Option<bool>,
-        Option<i32>,
-        DateTime<Utc>,
-        DateTime<Utc>,
-    )>(
+    let row = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            Uuid,
+            Uuid,
+            Option<DateTime<Utc>>,
+            Option<String>,
+            Option<bool>,
+            Option<i32>,
+            DateTime<Utc>,
+            DateTime<Utc>,
+        ),
+    >(
         r#"INSERT INTO evaluaciones
                (id, prototipo_id, jurado_id, template_id, client_id,
                 observaciones, acompanamiento_asesor, opinion_personal)
@@ -204,7 +207,9 @@ pub async fn create(
         });
     }
 
-    tx.commit().await.map_err(|e| ApiError::Internal(e.into()))?;
+    tx.commit()
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
 
     let view = EvaluacionView {
         id: row.0,
@@ -273,15 +278,16 @@ pub async fn patch_evaluacion(
     req.validate()
         .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
 
-    let (jurado_id, template_id, submitted_at) = sqlx::query_as::<_, (Uuid, Uuid, Option<DateTime<Utc>>)>(
-        r#"SELECT jurado_id, template_id, submitted_at
+    let (jurado_id, template_id, submitted_at) =
+        sqlx::query_as::<_, (Uuid, Uuid, Option<DateTime<Utc>>)>(
+            r#"SELECT jurado_id, template_id, submitted_at
            FROM evaluaciones WHERE id = $1"#,
-    )
-    .bind(id)
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(|e| ApiError::Internal(e.into()))?
-    .ok_or(ApiError::Core(dems_core::CoreError::NotFound))?;
+        )
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?
+        .ok_or(ApiError::Core(dems_core::CoreError::NotFound))?;
 
     if jurado_id != user.id {
         return Err(ApiError::Core(dems_core::CoreError::Forbidden));
@@ -346,7 +352,9 @@ pub async fn patch_evaluacion(
         }
     }
 
-    tx.commit().await.map_err(|e| ApiError::Internal(e.into()))?;
+    tx.commit()
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
     load_evaluacion(&state, id).await.map(Json)
 }
 
@@ -487,18 +495,21 @@ async fn validate_scores_against_template(
 }
 
 async fn load_evaluacion(state: &AppState, id: Uuid) -> ApiResult<EvaluacionView> {
-    let row = sqlx::query_as::<_, (
-        Uuid,
-        Uuid,
-        Uuid,
-        Uuid,
-        Option<DateTime<Utc>>,
-        Option<String>,
-        Option<bool>,
-        Option<i32>,
-        DateTime<Utc>,
-        DateTime<Utc>,
-    )>(
+    let row = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            Uuid,
+            Uuid,
+            Option<DateTime<Utc>>,
+            Option<String>,
+            Option<bool>,
+            Option<i32>,
+            DateTime<Utc>,
+            DateTime<Utc>,
+        ),
+    >(
         r#"SELECT id, prototipo_id, jurado_id, template_id,
                   submitted_at, observaciones, acompanamiento_asesor,
                   opinion_personal, created_at, updated_at

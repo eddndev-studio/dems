@@ -103,11 +103,25 @@ async fn assign_is_idempotent_for_same_triple(pool: PgPool) {
     let j = insert_user(&pool, "j@x.mx", "J", "jurado", "pw", true).await;
 
     let body = json!({ "jurado_id": j, "prototipo_id": p, "template_id": r });
-    let (s1, _) = request(pool.clone(), "POST", "/admin/assignments", Some(&tok), Some(body.clone())).await;
+    let (s1, _) = request(
+        pool.clone(),
+        "POST",
+        "/admin/assignments",
+        Some(&tok),
+        Some(body.clone()),
+    )
+    .await;
     assert_eq!(s1, StatusCode::CREATED);
 
     // Segunda vez: 200 (no duplica), porque ya existe la fila exacta.
-    let (s2, _) = request(pool.clone(), "POST", "/admin/assignments", Some(&tok), Some(body)).await;
+    let (s2, _) = request(
+        pool.clone(),
+        "POST",
+        "/admin/assignments",
+        Some(&tok),
+        Some(body),
+    )
+    .await;
     assert_eq!(s2, StatusCode::OK);
 
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM assignments")

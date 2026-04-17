@@ -75,25 +75,18 @@ pub async fn jurado(pool: &PgPool) -> (Uuid, String) {
 /// active edition at a time, which would bite any test that needs two.
 pub async fn seed_edition(pool: &PgPool, year: i32) -> Uuid {
     let id = Uuid::new_v4();
-    sqlx::query(
-        r#"INSERT INTO editions (id, year, name, active) VALUES ($1, $2, $3, false)"#,
-    )
-    .bind(id)
-    .bind(year)
-    .bind(format!("Edición {year}"))
-    .execute(pool)
-    .await
-    .expect("insert edition");
+    sqlx::query(r#"INSERT INTO editions (id, year, name, active) VALUES ($1, $2, $3, false)"#)
+        .bind(id)
+        .bind(year)
+        .bind(format!("Edición {year}"))
+        .execute(pool)
+        .await
+        .expect("insert edition");
     id
 }
 
 /// Insert a prototipo and return its id.
-pub async fn insert_prototipo(
-    pool: &PgPool,
-    edition_id: Uuid,
-    folio: &str,
-    nombre: &str,
-) -> Uuid {
+pub async fn insert_prototipo(pool: &PgPool, edition_id: Uuid, folio: &str, nombre: &str) -> Uuid {
     let id = Uuid::new_v4();
     sqlx::query(
         r#"INSERT INTO prototipos (id, edition_id, folio, nombre)
@@ -110,12 +103,7 @@ pub async fn insert_prototipo(
 }
 
 /// Assign a jurado to a prototipo under a specific rubric template.
-pub async fn assign_jurado(
-    pool: &PgPool,
-    jurado_id: Uuid,
-    prototipo_id: Uuid,
-    template_id: Uuid,
-) {
+pub async fn assign_jurado(pool: &PgPool, jurado_id: Uuid, prototipo_id: Uuid, template_id: Uuid) {
     sqlx::query(
         r#"INSERT INTO assignments (jurado_id, prototipo_id, template_id)
            VALUES ($1, $2, $3)"#,
@@ -189,14 +177,12 @@ pub async fn seed_section_with_criterion(
 /// Insert a categoría and return its id.
 pub async fn seed_categoria(pool: &PgPool, slug: &str, nombre: &str) -> Uuid {
     let id = Uuid::new_v4();
-    sqlx::query(
-        r#"INSERT INTO categorias (id, slug, nombre, orden) VALUES ($1, $2, $3, 1)"#,
-    )
-    .bind(id)
-    .bind(slug)
-    .bind(nombre)
-    .execute(pool)
-    .await
-    .expect("insert categoria");
+    sqlx::query(r#"INSERT INTO categorias (id, slug, nombre, orden) VALUES ($1, $2, $3, 1)"#)
+        .bind(id)
+        .bind(slug)
+        .bind(nombre)
+        .execute(pool)
+        .await
+        .expect("insert categoria");
     id
 }

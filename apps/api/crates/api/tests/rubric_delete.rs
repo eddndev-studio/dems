@@ -70,11 +70,12 @@ async fn delete_removes_template_with_no_evaluations(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(t, 0);
-    let s: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM rubric_sections WHERE template_id = $1::uuid")
-        .bind(Uuid::parse_str(&id).unwrap())
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let s: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM rubric_sections WHERE template_id = $1::uuid")
+            .bind(Uuid::parse_str(&id).unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(s, 0);
 }
 

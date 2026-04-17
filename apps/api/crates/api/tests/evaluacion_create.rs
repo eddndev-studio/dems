@@ -38,9 +38,12 @@ async fn post_eval(pool: PgPool, tok: Option<&str>, body: Value) -> (StatusCode,
 
 #[sqlx::test(migrations = "../../migrations")]
 async fn create_is_401_without_token(pool: PgPool) {
-    let (status, _) =
-        post_eval(pool, None, json!({ "prototipo_id": Uuid::new_v4(), "template_id": Uuid::new_v4() }))
-            .await;
+    let (status, _) = post_eval(
+        pool,
+        None,
+        json!({ "prototipo_id": Uuid::new_v4(), "template_id": Uuid::new_v4() }),
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 

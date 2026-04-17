@@ -31,12 +31,7 @@ async fn post_eval(pool: PgPool, tok: &str, body: Value) -> Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
-async fn patch_eval(
-    pool: PgPool,
-    id: &str,
-    tok: Option<&str>,
-    body: Value,
-) -> (StatusCode, Value) {
+async fn patch_eval(pool: PgPool, id: &str, tok: Option<&str>, body: Value) -> (StatusCode, Value) {
     let app = build_app(pool);
     let mut req = Request::builder()
         .method("PATCH")
@@ -96,13 +91,12 @@ async fn owner_can_update_scores(pool: PgPool) {
     let scores = body["scores"].as_array().unwrap();
     assert_eq!(scores.len(), 2);
     // Sólo una fila por criterion en la DB.
-    let rows: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM evaluacion_scores WHERE evaluacion_id = $1::uuid",
-    )
-    .bind(Uuid::parse_str(&id).unwrap())
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM evaluacion_scores WHERE evaluacion_id = $1::uuid")
+            .bind(Uuid::parse_str(&id).unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(rows, 2);
 }
 
@@ -125,13 +119,7 @@ async fn patch_metadata_only_leaves_scores_untouched(pool: PgPool) {
     .await;
     let id = created["id"].as_str().unwrap().to_string();
 
-    let (status, body) = patch_eval(
-        pool,
-        &id,
-        Some(&tok),
-        json!({ "opinion_personal": 90 }),
-    )
-    .await;
+    let (status, body) = patch_eval(pool, &id, Some(&tok), json!({ "opinion_personal": 90 })).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["opinion_personal"], 90);
     assert_eq!(body["scores"].as_array().unwrap().len(), 1);
@@ -161,13 +149,7 @@ async fn patch_is_409_after_submit(pool: PgPool) {
         .await
         .unwrap();
 
-    let (status, _) = patch_eval(
-        pool,
-        &id,
-        Some(&tok),
-        json!({ "observaciones": "tarde" }),
-    )
-    .await;
+    let (status, _) = patch_eval(pool, &id, Some(&tok), json!({ "observaciones": "tarde" })).await;
     assert_eq!(status, StatusCode::CONFLICT);
 }
 
@@ -189,13 +171,7 @@ async fn other_jurado_gets_403(pool: PgPool) {
     let j2 = insert_user(&pool, "j2@x.mx", "J2", "jurado", "pw", true).await;
     let t2 = token_for(j2, UserRole::Jurado, 900, TokenKind::Access);
 
-    let (status, _) = patch_eval(
-        pool,
-        &id,
-        Some(&t2),
-        json!({ "observaciones": "ajeno" }),
-    )
-    .await;
+    let (status, _) = patch_eval(pool, &id, Some(&t2), json!({ "observaciones": "ajeno" })).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
 
@@ -225,13 +201,12 @@ async fn patch_rejects_invalid_score(pool: PgPool) {
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 
     // Rollback: no quedó parcialmente aplicado.
-    let rows: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM evaluacion_scores WHERE evaluacion_id = $1::uuid",
-    )
-    .bind(Uuid::parse_str(&id).unwrap())
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM evaluacion_scores WHERE evaluacion_id = $1::uuid")
+            .bind(Uuid::parse_str(&id).unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(rows, 0);
 }
 

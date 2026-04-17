@@ -91,7 +91,9 @@ pub async fn create(
         ApiError::Internal(e.into())
     })?;
 
-    tx.commit().await.map_err(|e| ApiError::Internal(e.into()))?;
+    tx.commit()
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
     Ok((StatusCode::CREATED, Json(view)))
 }
 
@@ -187,7 +189,9 @@ pub async fn patch(
     .await
     .map_err(|e| ApiError::Internal(e.into()))?;
 
-    tx.commit().await.map_err(|e| ApiError::Internal(e.into()))?;
+    tx.commit()
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
     Ok(Json(view))
 }
 

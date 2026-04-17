@@ -76,13 +76,12 @@ async fn create_prototipo_with_categorias_and_integrantes(pool: PgPool) {
     assert_eq!(body["integrantes"].as_array().unwrap().len(), 2);
 
     let p_id: Uuid = body["id"].as_str().unwrap().parse().unwrap();
-    let integrantes: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM prototipo_integrantes WHERE prototipo_id = $1",
-    )
-    .bind(p_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let integrantes: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM prototipo_integrantes WHERE prototipo_id = $1")
+            .bind(p_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(integrantes, 2);
 }
 

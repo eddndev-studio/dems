@@ -227,7 +227,9 @@ pub async fn create(
         });
     }
 
-    tx.commit().await.map_err(|e| ApiError::Internal(e.into()))?;
+    tx.commit()
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
 
     let view = RubricTemplateView {
         id: template_id,
@@ -482,13 +484,12 @@ pub async fn delete_rubric(
     // Si existe alguna evaluación que referencia esta rúbrica, preservamos
     // la auditoría: borrar rompería el historial de puntajes. El admin
     // puede archivar con PATCH { activo: false } en su lugar.
-    let used: bool = sqlx::query_scalar(
-        r#"SELECT EXISTS (SELECT 1 FROM evaluaciones WHERE template_id = $1)"#,
-    )
-    .bind(id)
-    .fetch_one(&state.pool)
-    .await
-    .map_err(|e| ApiError::Internal(e.into()))?;
+    let used: bool =
+        sqlx::query_scalar(r#"SELECT EXISTS (SELECT 1 FROM evaluaciones WHERE template_id = $1)"#)
+            .bind(id)
+            .fetch_one(&state.pool)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
 
     if used {
         return Err(ApiError::Core(dems_core::CoreError::Conflict(

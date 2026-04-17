@@ -52,8 +52,7 @@ async fn login_returns_tokens_on_valid_credentials(pool: PgPool) {
     assert_eq!(body["user"]["email"], "jurado@dems.local");
     // Nunca filtrar el hash.
     assert!(
-        body.get("password_hash").is_none()
-            && body["user"].get("password_hash").is_none(),
+        body.get("password_hash").is_none() && body["user"].get("password_hash").is_none(),
         "password hash must not leak: {body}"
     );
 }

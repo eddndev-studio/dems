@@ -87,7 +87,10 @@ async fn list_returns_summaries_not_tree(pool: PgPool) {
     // Conteo, no árbol completo.
     assert_eq!(item["section_count"], 1);
     assert_eq!(item["criterion_count"], 1);
-    assert!(item.get("sections").is_none(), "list must not embed the full tree");
+    assert!(
+        item.get("sections").is_none(),
+        "list must not embed the full tree"
+    );
 }
 
 #[sqlx::test(migrations = "../../migrations")]
@@ -108,8 +111,7 @@ async fn list_filters_by_edition(pool: PgPool) {
     )
     .await;
 
-    let (status, body) =
-        list_rubrics(pool, &tok, &format!("edition_id={e1}")).await;
+    let (status, body) = list_rubrics(pool, &tok, &format!("edition_id={e1}")).await;
     assert_eq!(status, StatusCode::OK);
     let items = body.as_array().unwrap();
     assert_eq!(items.len(), 1);
@@ -165,12 +167,8 @@ async fn list_combines_filters(pool: PgPool) {
         .await;
     }
 
-    let (status, body) = list_rubrics(
-        pool,
-        &tok,
-        &format!("edition_id={e1}&tipo=exhibicion"),
-    )
-    .await;
+    let (status, body) =
+        list_rubrics(pool, &tok, &format!("edition_id={e1}&tipo=exhibicion")).await;
     assert_eq!(status, StatusCode::OK);
     let items = body.as_array().unwrap();
     assert_eq!(items.len(), 1);

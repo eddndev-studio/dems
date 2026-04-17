@@ -114,8 +114,14 @@ async fn list_users_filters_by_role(pool: PgPool) {
     let _ = insert_user(&pool, "j1@x.mx", "J1", "jurado", "pw", true).await;
     let _ = insert_user(&pool, "j2@x.mx", "J2", "jurado", "pw", true).await;
 
-    let (status, body) = request(pool.clone(), "GET", "/admin/users?role=jurado", Some(&tok), None)
-        .await;
+    let (status, body) = request(
+        pool.clone(),
+        "GET",
+        "/admin/users?role=jurado",
+        Some(&tok),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     // Solo jurados: j1, j2. El admin que creamos para el token no aparece.
     assert_eq!(body.as_array().unwrap().len(), 2);
@@ -227,7 +233,9 @@ async fn users_crud_is_403_for_jurado(pool: PgPool) {
         "POST",
         "/admin/users",
         Some(&tok),
-        Some(json!({ "email": "a@b.c", "full_name": "a", "role": "jurado", "password": "12345678" })),
+        Some(
+            json!({ "email": "a@b.c", "full_name": "a", "role": "jurado", "password": "12345678" }),
+        ),
     )
     .await;
     assert_eq!(s2, StatusCode::FORBIDDEN);

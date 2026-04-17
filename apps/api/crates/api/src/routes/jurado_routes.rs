@@ -42,11 +42,20 @@ pub async fn list_asignaciones(
 ) -> ApiResult<Json<Vec<AsignacionItem>>> {
     // Queremos una fila por (prototipo, template) para el usuario autenticado,
     // con el id de evaluación existente (si lo hay) y si ya está enviada.
-    let rows = sqlx::query_as::<_, (
-        Uuid, String, String, Option<String>, // prototipo
-        Uuid, String, RubricType,             // rubric
-        Option<Uuid>, Option<chrono::DateTime<chrono::Utc>>, // evaluacion
-    )>(
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            String,
+            Option<String>, // prototipo
+            Uuid,
+            String,
+            RubricType, // rubric
+            Option<Uuid>,
+            Option<chrono::DateTime<chrono::Utc>>, // evaluacion
+        ),
+    >(
         r#"
         SELECT
             p.id, p.folio, p.nombre, p.plantel,
@@ -70,23 +79,35 @@ pub async fn list_asignaciones(
 
     let items: Vec<AsignacionItem> = rows
         .into_iter()
-        .map(|(p_id, p_folio, p_nombre, p_plantel, r_id, r_nombre, r_tipo, eval_id, submitted_at)| {
-            AsignacionItem {
-                prototipo: PrototipoSummary {
-                    id: p_id,
-                    folio: p_folio,
-                    nombre: p_nombre,
-                    plantel: p_plantel,
-                },
-                rubric: RubricSummary {
-                    id: r_id,
-                    nombre: r_nombre,
-                    tipo: r_tipo,
-                },
-                evaluacion_id: eval_id,
-                submitted: submitted_at.is_some(),
-            }
-        })
+        .map(
+            |(
+                p_id,
+                p_folio,
+                p_nombre,
+                p_plantel,
+                r_id,
+                r_nombre,
+                r_tipo,
+                eval_id,
+                submitted_at,
+            )| {
+                AsignacionItem {
+                    prototipo: PrototipoSummary {
+                        id: p_id,
+                        folio: p_folio,
+                        nombre: p_nombre,
+                        plantel: p_plantel,
+                    },
+                    rubric: RubricSummary {
+                        id: r_id,
+                        nombre: r_nombre,
+                        tipo: r_tipo,
+                    },
+                    evaluacion_id: eval_id,
+                    submitted: submitted_at.is_some(),
+                }
+            },
+        )
         .collect();
 
     Ok(Json(items))

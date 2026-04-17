@@ -127,13 +127,11 @@ pub async fn refresh(
 
     // Confirmamos que el usuario sigue activo: un admin que desactiva a
     // un jurado debe cortarle la renovación de tokens.
-    let is_active = sqlx::query_scalar::<_, bool>(
-        r#"SELECT is_active FROM users WHERE id = $1"#,
-    )
-    .bind(claims.sub)
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(|e| ApiError::Internal(e.into()))?;
+    let is_active = sqlx::query_scalar::<_, bool>(r#"SELECT is_active FROM users WHERE id = $1"#)
+        .bind(claims.sub)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
 
     if is_active != Some(true) {
         return Err(ApiError::Core(dems_core::CoreError::Unauthorized));

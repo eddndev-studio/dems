@@ -23,19 +23,13 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/login", post(auth_routes::login))
         .route("/auth/refresh", post(auth_routes::refresh))
         .route("/me", get(auth_routes::me))
-        .route(
-            "/me/asignaciones",
-            get(jurado_routes::list_asignaciones),
-        )
+        .route("/me/asignaciones", get(jurado_routes::list_asignaciones))
         .route("/evaluaciones", post(evaluacion_routes::create))
         .route(
             "/evaluaciones/:id",
             get(evaluacion_routes::get_by_id).patch(evaluacion_routes::patch_evaluacion),
         )
-        .route(
-            "/evaluaciones/:id/submit",
-            post(evaluacion_routes::submit),
-        )
+        .route("/evaluaciones/:id/submit", post(evaluacion_routes::submit))
         .route(
             "/admin/users",
             get(admin_users::list).post(admin_users::create),

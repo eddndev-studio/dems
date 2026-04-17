@@ -225,13 +225,12 @@ pub async fn delete(
 ) -> ApiResult<StatusCode> {
     // Preservamos historial: un jurado con evaluaciones no se borra, se
     // desactiva vía PATCH { is_active: false }.
-    let has_evals: bool = sqlx::query_scalar(
-        r#"SELECT EXISTS (SELECT 1 FROM evaluaciones WHERE jurado_id = $1)"#,
-    )
-    .bind(id)
-    .fetch_one(&state.pool)
-    .await
-    .map_err(|e| ApiError::Internal(e.into()))?;
+    let has_evals: bool =
+        sqlx::query_scalar(r#"SELECT EXISTS (SELECT 1 FROM evaluaciones WHERE jurado_id = $1)"#)
+            .bind(id)
+            .fetch_one(&state.pool)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
 
     if has_evals {
         return Err(ApiError::Core(dems_core::CoreError::Conflict(

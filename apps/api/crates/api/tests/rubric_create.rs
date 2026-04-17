@@ -11,11 +11,7 @@ use tower::ServiceExt;
 
 use common::{admin, build_app, jurado, seed_edition};
 
-async fn post_create(
-    pool: PgPool,
-    bearer: Option<&str>,
-    body: Value,
-) -> (StatusCode, Value) {
+async fn post_create(pool: PgPool, bearer: Option<&str>, body: Value) -> (StatusCode, Value) {
     let app = build_app(pool);
     let mut req = Request::builder()
         .method("POST")

@@ -213,7 +213,11 @@ async fn submit_ignores_text_key_criteria(pool: PgPool) {
     let id = created["id"].as_str().unwrap().to_string();
 
     let (status, _) = submit(pool, &id, Some(&tok)).await;
-    assert_eq!(status, StatusCode::OK, "text_key criteria must not block submit");
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "text_key criteria must not block submit"
+    );
 }
 
 #[sqlx::test(migrations = "../../migrations")]

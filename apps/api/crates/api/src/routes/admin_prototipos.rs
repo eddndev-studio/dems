@@ -166,7 +166,9 @@ pub async fn create(
         });
     }
 
-    tx.commit().await.map_err(|e| ApiError::Internal(e.into()))?;
+    tx.commit()
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
 
     Ok((
         StatusCode::CREATED,
@@ -231,16 +233,19 @@ pub async fn get_by_id(
 }
 
 async fn load_prototipo(state: &AppState, id: Uuid) -> ApiResult<PrototipoView> {
-    let main = sqlx::query_as::<_, (
-        Uuid,
-        Uuid,
-        String,
-        String,
-        Option<String>,
-        bool,
-        Option<String>,
-        DateTime<Utc>,
-    )>(
+    let main = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            String,
+            String,
+            Option<String>,
+            bool,
+            Option<String>,
+            DateTime<Utc>,
+        ),
+    >(
         r#"SELECT id, edition_id, folio, nombre, plantel, eje_transversal,
                   descripcion, created_at
            FROM prototipos WHERE id = $1"#,
@@ -331,13 +336,12 @@ pub async fn delete(
     _: RequireAdmin,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    let has_evals: bool = sqlx::query_scalar(
-        r#"SELECT EXISTS (SELECT 1 FROM evaluaciones WHERE prototipo_id = $1)"#,
-    )
-    .bind(id)
-    .fetch_one(&state.pool)
-    .await
-    .map_err(|e| ApiError::Internal(e.into()))?;
+    let has_evals: bool =
+        sqlx::query_scalar(r#"SELECT EXISTS (SELECT 1 FROM evaluaciones WHERE prototipo_id = $1)"#)
+            .bind(id)
+            .fetch_one(&state.pool)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
 
     if has_evals {
         return Err(ApiError::Core(dems_core::CoreError::Conflict(

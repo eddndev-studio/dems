@@ -28,7 +28,9 @@ impl IntoResponse for ApiError {
                 (StatusCode::FORBIDDEN, "forbidden".to_string())
             }
             ApiError::Core(CoreError::Conflict(m)) => (StatusCode::CONFLICT, m.clone()),
-            ApiError::Core(CoreError::Validation(m)) => (StatusCode::UNPROCESSABLE_ENTITY, m.clone()),
+            ApiError::Core(CoreError::Validation(m)) => {
+                (StatusCode::UNPROCESSABLE_ENTITY, m.clone())
+            }
             ApiError::Core(CoreError::Database(e)) => {
                 tracing::error!(error = %e, "database error");
                 (StatusCode::INTERNAL_SERVER_ERROR, "database error".into())

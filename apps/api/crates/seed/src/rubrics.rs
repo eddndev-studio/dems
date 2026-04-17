@@ -37,7 +37,11 @@ pub async fn seed(pool: &PgPool) -> anyhow::Result<()> {
         ("desarrollo-software", "Desarrollo de Software", 1),
         ("productos-ensenanza", "Productos para la Enseñanza", 2),
         ("maquinaria-equipo", "Maquinaria y Equipo Productivo", 3),
-        ("procesos-quimicos-biologicos", "Procesos Químicos y Biológicos", 4),
+        (
+            "procesos-quimicos-biologicos",
+            "Procesos Químicos y Biológicos",
+            4,
+        ),
         ("soluciones-domesticas", "Soluciones Domésticas", 5),
         ("productos-salud", "Productos para la Salud", 6),
         ("aplicacion-empresa", "Aplicación para la Empresa", 7),
@@ -146,10 +150,20 @@ async fn seed_exhibicion_2024(
         tx,
         cartel_sec,
         "¿Cómo evaluarías el diseño del stand?",
-        2, 3, "scale",
-    ).await?;
+        2,
+        3,
+        "scale",
+    )
+    .await?;
 
-    let sec_clave = insert_section(tx, template_id, "Preguntas clave (sin puntaje)", 7, Some(0.0)).await?;
+    let sec_clave = insert_section(
+        tx,
+        template_id,
+        "Preguntas clave (sin puntaje)",
+        7,
+        Some(0.0),
+    )
+    .await?;
     for (i, q) in [
         "¿En dónde surgió la idea del prototipo?",
         "Según el lema del Politécnico \"La técnica al servicio de la patria\", ¿cuál sería tu mejor contribución?",
@@ -160,7 +174,15 @@ async fn seed_exhibicion_2024(
     {
         insert_criterion(tx, sec_clave, q, i as i32 + 1, 0, "text_key").await?;
     }
-    insert_criterion(tx, sec_clave, "Se observó acompañamiento del asesor", 4, 1, "boolean").await?;
+    insert_criterion(
+        tx,
+        sec_clave,
+        "Se observó acompañamiento del asesor",
+        4,
+        1,
+        "boolean",
+    )
+    .await?;
 
     Ok(())
 }
@@ -180,104 +202,176 @@ async fn seed_memoria_2021(
     .await?;
 
     let secciones: &[(&str, i32, &[&str])] = &[
-        ("Resumen", 1, &[
-            "Presenta los datos relevantes del desarrollo del prototipo/modelo de negocios.",
-            "Incluye las variables principales del proyecto.",
-            "Presenta los resultados obtenidos.",
-        ]),
-        ("Introducción", 2, &[
-            "Explica brevemente sobre la estructura del documento.",
-            "Planteamiento del problema.",
-            "Presenta la metodología de los procedimientos utilizados.",
-        ]),
-        ("Objetivo", 3, &[
-            "Presenta un objetivo claro y preciso.",
-            "El objetivo es congruente con la categoría.",
-            "Los objetivos específicos son congruentes con el objetivo general.",
-            "Los objetivos específicos son factibles de evaluar y medibles.",
-        ]),
-        ("Justificación", 4, &[
-            "Plantea la forma de solucionar el problema, demanda o necesidad detectada.",
-            "Expone la importancia por la cual desarrolló el prototipo/modelo de negocios.",
-            "Describe el sector o mercado al que va dirigido.",
-            "Menciona los beneficios que se obtendrán al desarrollar el prototipo/B2B.",
-        ]),
-        ("Sustento Teórico", 5, &[
-            "Refleja la extracción y recopilación de información teórica y de campo.",
-            "Menciona los principios básicos o conceptos en los que se basa.",
-            "Se apoya en el sustento teórico para el desarrollo.",
-        ]),
-        ("Metodología — Planeación", 6, &[
-            "Describe los procesos detalladamente de cada actividad.",
-            "Presenta cronograma de actividades.",
-        ]),
-        ("Factibilidad Técnica", 7, &[
-            "Presenta procesos de operación o técnicos utilizados.",
-            "Disponibilidad de materiales, recursos humanos, equipo, maquinaria o tecnología.",
-            "Presenta propuestas de mantenimiento del prototipo.",
-            "Interpretación de resultados (ampliación o reducción de producción).",
-            "Utiliza elementos y recursos técnicos congruentes.",
-            "Es una alternativa tecnológicamente viable.",
-        ]),
-        ("Factibilidad Económica", 8, &[
-            "Determina costos de operación y producción.",
-            "Determina análisis costo-beneficio.",
-            "Presenta metodología para mantenerse ante el consumidor.",
-        ]),
-        ("Factibilidad Financiera", 9, &[
-            "Presenta y determina presupuestos de ingresos y egresos.",
-            "Es financieramente factible de producir.",
-            "Es una alternativa viable.",
-        ]),
-        ("Impacto Social, Tecnológico y Sustentable", 10, &[
-            "Describe los beneficios e impacto social o tecnológico.",
-            "Describe el impacto ambiental positivo o negativo posible.",
-            "Contribuye a la sustentabilidad para el sector.",
-        ]),
-        ("Grado de Innovación", 11, &[
-            "Especifica una novedad, idea nueva, producto, método, servicio o mercado.",
-            "Describe la innovación, creatividad, mejoras o nueva solución.",
-        ]),
-        ("Pruebas", 12, &[
-            "Describe el tipo de pruebas para comprobar la funcionalidad.",
-        ]),
-        ("Análisis de Resultados", 13, &[
-            "Presenta resultados mediante tablas, planos, gráficas, fotografías.",
-            "Analiza e interpreta resultados comparativos.",
-        ]),
-        ("Conclusión", 14, &[
-            "Puntualiza en qué medida se cumplieron los objetivos.",
-            "Presenta propuestas para la mejora del prototipo.",
-        ]),
-        ("Bibliografía", 15, &[
-            "Utiliza referencias bibliográficas confiables.",
-        ]),
-        ("Gramática", 16, &[
-            "Presenta una redacción clara y congruente.",
-            "Presenta una correcta ortografía.",
-        ]),
-        ("Anexo — Instructivo o Manual", 17, &[
-            "Detalles técnicos de ensamble o armado, o uso.",
-            "Procedimiento para el funcionamiento o utilización.",
-            "Procedimientos de mantenimiento.",
-            "Recomendaciones o precauciones de uso.",
-        ]),
-        ("Anexo — Tríptico Publicitario", 18, &[
-            "Visualmente creativo (logo, marca, colores, diseño).",
-            "Título.",
-            "Misión y visión.",
-            "Objetivo.",
-            "Ventajas competitivas del producto o servicio (propuesta de valor).",
-        ]),
-        ("Anexo — Presentación de Video", 19, &[
-            "Presentación.",
-            "Nombre del prototipo.",
-            "Objetivo.",
-            "Características del prototipo en funcionamiento.",
-            "Promoción del producto o servicio y mercado.",
-            "Elementos de innovación en su presentación.",
-            "Conclusiones.",
-        ]),
+        (
+            "Resumen",
+            1,
+            &[
+                "Presenta los datos relevantes del desarrollo del prototipo/modelo de negocios.",
+                "Incluye las variables principales del proyecto.",
+                "Presenta los resultados obtenidos.",
+            ],
+        ),
+        (
+            "Introducción",
+            2,
+            &[
+                "Explica brevemente sobre la estructura del documento.",
+                "Planteamiento del problema.",
+                "Presenta la metodología de los procedimientos utilizados.",
+            ],
+        ),
+        (
+            "Objetivo",
+            3,
+            &[
+                "Presenta un objetivo claro y preciso.",
+                "El objetivo es congruente con la categoría.",
+                "Los objetivos específicos son congruentes con el objetivo general.",
+                "Los objetivos específicos son factibles de evaluar y medibles.",
+            ],
+        ),
+        (
+            "Justificación",
+            4,
+            &[
+                "Plantea la forma de solucionar el problema, demanda o necesidad detectada.",
+                "Expone la importancia por la cual desarrolló el prototipo/modelo de negocios.",
+                "Describe el sector o mercado al que va dirigido.",
+                "Menciona los beneficios que se obtendrán al desarrollar el prototipo/B2B.",
+            ],
+        ),
+        (
+            "Sustento Teórico",
+            5,
+            &[
+                "Refleja la extracción y recopilación de información teórica y de campo.",
+                "Menciona los principios básicos o conceptos en los que se basa.",
+                "Se apoya en el sustento teórico para el desarrollo.",
+            ],
+        ),
+        (
+            "Metodología — Planeación",
+            6,
+            &[
+                "Describe los procesos detalladamente de cada actividad.",
+                "Presenta cronograma de actividades.",
+            ],
+        ),
+        (
+            "Factibilidad Técnica",
+            7,
+            &[
+                "Presenta procesos de operación o técnicos utilizados.",
+                "Disponibilidad de materiales, recursos humanos, equipo, maquinaria o tecnología.",
+                "Presenta propuestas de mantenimiento del prototipo.",
+                "Interpretación de resultados (ampliación o reducción de producción).",
+                "Utiliza elementos y recursos técnicos congruentes.",
+                "Es una alternativa tecnológicamente viable.",
+            ],
+        ),
+        (
+            "Factibilidad Económica",
+            8,
+            &[
+                "Determina costos de operación y producción.",
+                "Determina análisis costo-beneficio.",
+                "Presenta metodología para mantenerse ante el consumidor.",
+            ],
+        ),
+        (
+            "Factibilidad Financiera",
+            9,
+            &[
+                "Presenta y determina presupuestos de ingresos y egresos.",
+                "Es financieramente factible de producir.",
+                "Es una alternativa viable.",
+            ],
+        ),
+        (
+            "Impacto Social, Tecnológico y Sustentable",
+            10,
+            &[
+                "Describe los beneficios e impacto social o tecnológico.",
+                "Describe el impacto ambiental positivo o negativo posible.",
+                "Contribuye a la sustentabilidad para el sector.",
+            ],
+        ),
+        (
+            "Grado de Innovación",
+            11,
+            &[
+                "Especifica una novedad, idea nueva, producto, método, servicio o mercado.",
+                "Describe la innovación, creatividad, mejoras o nueva solución.",
+            ],
+        ),
+        (
+            "Pruebas",
+            12,
+            &["Describe el tipo de pruebas para comprobar la funcionalidad."],
+        ),
+        (
+            "Análisis de Resultados",
+            13,
+            &[
+                "Presenta resultados mediante tablas, planos, gráficas, fotografías.",
+                "Analiza e interpreta resultados comparativos.",
+            ],
+        ),
+        (
+            "Conclusión",
+            14,
+            &[
+                "Puntualiza en qué medida se cumplieron los objetivos.",
+                "Presenta propuestas para la mejora del prototipo.",
+            ],
+        ),
+        (
+            "Bibliografía",
+            15,
+            &["Utiliza referencias bibliográficas confiables."],
+        ),
+        (
+            "Gramática",
+            16,
+            &[
+                "Presenta una redacción clara y congruente.",
+                "Presenta una correcta ortografía.",
+            ],
+        ),
+        (
+            "Anexo — Instructivo o Manual",
+            17,
+            &[
+                "Detalles técnicos de ensamble o armado, o uso.",
+                "Procedimiento para el funcionamiento o utilización.",
+                "Procedimientos de mantenimiento.",
+                "Recomendaciones o precauciones de uso.",
+            ],
+        ),
+        (
+            "Anexo — Tríptico Publicitario",
+            18,
+            &[
+                "Visualmente creativo (logo, marca, colores, diseño).",
+                "Título.",
+                "Misión y visión.",
+                "Objetivo.",
+                "Ventajas competitivas del producto o servicio (propuesta de valor).",
+            ],
+        ),
+        (
+            "Anexo — Presentación de Video",
+            19,
+            &[
+                "Presentación.",
+                "Nombre del prototipo.",
+                "Objetivo.",
+                "Características del prototipo en funcionamiento.",
+                "Promoción del producto o servicio y mercado.",
+                "Elementos de innovación en su presentación.",
+                "Conclusiones.",
+            ],
+        ),
     ];
 
     for (sec_name, sec_orden, criterios) in secciones {

@@ -154,12 +154,8 @@ async fn create_without_client_id_still_works(pool: PgPool) {
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     assign_jurado(&pool, jurado_id, p, r).await;
 
-    let (status, body) = post_eval(
-        pool,
-        &tok,
-        json!({ "prototipo_id": p, "template_id": r }),
-    )
-    .await;
+    let (status, body) =
+        post_eval(pool, &tok, json!({ "prototipo_id": p, "template_id": r })).await;
     assert_eq!(status, StatusCode::CREATED);
     assert!(body["id"].is_string());
 }
