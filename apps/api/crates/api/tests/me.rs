@@ -10,8 +10,8 @@ use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use common::{build_app, insert_user, test_config};
-use dems_api::auth::{self, TokenKind};
+use common::{build_app, insert_user, token_for};
+use dems_api::auth::TokenKind;
 use dems_core::models::UserRole;
 
 async fn get_me(pool: PgPool, bearer: Option<&str>) -> (StatusCode, Value) {
@@ -25,10 +25,6 @@ async fn get_me(pool: PgPool, bearer: Option<&str>) -> (StatusCode, Value) {
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     let value: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
     (status, value)
-}
-
-fn token_for(user_id: Uuid, role: UserRole, ttl: i64, kind: TokenKind) -> String {
-    auth::issue(&test_config().jwt_secret, user_id, role, ttl, kind).unwrap()
 }
 
 #[sqlx::test(migrations = "../../migrations")]

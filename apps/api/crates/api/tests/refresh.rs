@@ -10,8 +10,8 @@ use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use common::{build_app, insert_user, test_config};
-use dems_api::auth::{self, TokenKind};
+use common::{build_app, insert_user, token_for as mk_token};
+use dems_api::auth::TokenKind;
 use dems_core::models::UserRole;
 
 async fn post_refresh(pool: PgPool, body: Value) -> (StatusCode, Value) {
@@ -30,7 +30,7 @@ async fn post_refresh(pool: PgPool, body: Value) -> (StatusCode, Value) {
 }
 
 fn token_for(id: Uuid, ttl: i64, kind: TokenKind) -> String {
-    auth::issue(&test_config().jwt_secret, id, UserRole::Jurado, ttl, kind).unwrap()
+    mk_token(id, UserRole::Jurado, ttl, kind)
 }
 
 #[sqlx::test(migrations = "../../migrations")]
