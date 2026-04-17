@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
+
+use dems_core::models::UserRole;
 
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::CurrentUser;
@@ -278,6 +280,24 @@ pub async fn create(
 // ---------------------------------------------------------------------------
 // Read helper (used by idempotent replay + read endpoints in later cycles)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// GET /evaluaciones/:id
+// ---------------------------------------------------------------------------
+
+pub async fn get_by_id(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<EvaluacionView>> {
+    let view = load_evaluacion(&state, id).await?;
+    // Owner or admin only. Other jurados get 403, not 404, because
+    // at this point the resource is known to exist.
+    if !matches!(user.role, UserRole::Admin) && view.jurado_id != user.id {
+        return Err(ApiError::Core(dems_core::CoreError::Forbidden));
+    }
+    Ok(Json(view))
+}
 
 async fn load_evaluacion(state: &AppState, id: Uuid) -> ApiResult<EvaluacionView> {
     let row = sqlx::query_as::<_, (
