@@ -48,6 +48,25 @@ api-fmt:
 api-lint:
     cd apps/api && cargo clippy --workspace --all-targets -- -D warnings
 
+# Regenera packages/shared/openapi.json a partir de las anotaciones utoipa.
+openapi-export:
+    cd apps/api && cargo run --quiet --bin openapi-export -- ../../packages/shared/openapi.json
+
+# Verifica que packages/shared/openapi.json está sincronizado con el código.
+# Útil en CI — falla si alguien cambió un handler sin regenerar.
+openapi-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+    cd apps/api && cargo run --quiet --bin openapi-export -- "$tmp"
+    if ! diff -q "$tmp" ../../packages/shared/openapi.json > /dev/null; then
+        echo "openapi.json out of sync — run 'just openapi-export' and commit." >&2
+        diff -u ../../packages/shared/openapi.json "$tmp" | head -40 >&2
+        exit 1
+    fi
+    echo "openapi.json in sync"
+
 # --- Mobile ---
 mobile:
     cd apps/mobile && flutter run

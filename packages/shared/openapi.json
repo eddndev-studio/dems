@@ -1,0 +1,2721 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DEMS API",
+    "description": "Plataforma de evaluación de prototipos IPN-DEMS.",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    },
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "Local dev"
+    }
+  ],
+  "paths": {
+    "/admin/assignments": {
+      "post": {
+        "tags": [
+          "admin/assignments"
+        ],
+        "operationId": "create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Idempotente — ya existía",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentView"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "user no jurado, edición distinta o IDs desconocidos"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "admin/assignments"
+        ],
+        "operationId": "delete",
+        "parameters": [
+          {
+            "name": "jurado_id",
+            "in": "query",
+            "description": "ID del jurado",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "prototipo_id",
+            "in": "query",
+            "description": "ID del prototipo",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "template_id",
+            "in": "query",
+            "description": "ID del template",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Existe evaluación para esta tripleta"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/editions": {
+      "get": {
+        "tags": [
+          "admin/editions"
+        ],
+        "operationId": "list",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EditionView"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "admin/editions"
+        ],
+        "operationId": "create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEditionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditionView"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Año duplicado"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/editions/{id}": {
+      "get": {
+        "tags": [
+          "admin/editions"
+        ],
+        "operationId": "get_by_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditionView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "admin/editions"
+        ],
+        "operationId": "delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Tiene rúbricas o prototipos"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "admin/editions"
+        ],
+        "operationId": "patch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchEditionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditionView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/evaluaciones/{id}/reopen": {
+      "post": {
+        "tags": [
+          "admin/results"
+        ],
+        "summary": "Admin pone `submitted_at = NULL` para que el jurado dueño pueda corregir\nla evaluación. Los scores no se tocan; reabrir un draft es 409 (no hay\nnada que reabrir).",
+        "operationId": "reopen",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID de la evaluación",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Evaluación reabierta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluacionView"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Sólo admin"
+          },
+          "404": {
+            "description": "No encontrada"
+          },
+          "409": {
+            "description": "No está submitted — nada que reabrir"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/prototipos": {
+      "get": {
+        "tags": [
+          "admin/prototipos"
+        ],
+        "operationId": "list",
+        "parameters": [
+          {
+            "name": "edition_id",
+            "in": "query",
+            "description": "Filtrar por edición",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PrototipoSummary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "admin/prototipos"
+        ],
+        "operationId": "create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePrototipoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrototipoView"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "folio duplicado en la edición"
+          },
+          "422": {
+            "description": "Validación falló"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/prototipos/{id}": {
+      "get": {
+        "tags": [
+          "admin/prototipos"
+        ],
+        "operationId": "get_by_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrototipoView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "admin/prototipos"
+        ],
+        "operationId": "delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Tiene evaluaciones"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "admin/prototipos"
+        ],
+        "operationId": "patch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchPrototipoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrototipoView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/prototipos/{id}/assignments": {
+      "get": {
+        "tags": [
+          "admin/assignments"
+        ],
+        "operationId": "list_for_prototipo",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID del prototipo",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AssignmentWithJuradoView"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/results/categoria/{slug}": {
+      "get": {
+        "tags": [
+          "admin/results"
+        ],
+        "operationId": "by_categoria",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Slug de la categoría",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "edition_id",
+            "in": "query",
+            "description": "ID de la edición",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "rubric_type",
+            "in": "query",
+            "description": "exhibicion (default) | memoria",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ranking de prototipos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoriaResultsView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "rubric_type inválido o edition_id ausente"
+          },
+          "403": {
+            "description": "Sólo admin"
+          },
+          "404": {
+            "description": "Categoría o edición no encontrada"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/results/edition/{id}/export.csv": {
+      "get": {
+        "tags": [
+          "admin/results"
+        ],
+        "summary": "CSV con todos los prototipos de la edición. Una fila por (categoría,\nprototipo). Promedio sobre evaluaciones submitted del rubric_type\nsolicitado.",
+        "operationId": "export_csv",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID de la edición",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "rubric_type",
+            "in": "query",
+            "description": "exhibicion (default) | memoria",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV de resultados",
+            "content": {
+              "text/csv": {}
+            }
+          },
+          "400": {
+            "description": "rubric_type inválido"
+          },
+          "403": {
+            "description": "Sólo admin"
+          },
+          "404": {
+            "description": "Edición no encontrada"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/rubric-templates": {
+      "get": {
+        "tags": [
+          "admin/rubrics"
+        ],
+        "operationId": "list",
+        "parameters": [
+          {
+            "name": "edition_id",
+            "in": "query",
+            "description": "Filtrar por edición",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "tipo",
+            "in": "query",
+            "description": "Filtrar por tipo",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/RubricType"
+            }
+          },
+          {
+            "name": "activo",
+            "in": "query",
+            "description": "Filtrar por activo",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RubricTemplateSummary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "admin/rubrics"
+        ],
+        "operationId": "create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRubricRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RubricTemplateView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validación falló"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/rubric-templates/{id}": {
+      "get": {
+        "tags": [
+          "admin/rubrics"
+        ],
+        "operationId": "get_by_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RubricTemplateView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "admin/rubrics"
+        ],
+        "operationId": "delete_rubric",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Hay evaluaciones referenciando — desactivar en su lugar"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "admin/rubrics"
+        ],
+        "operationId": "patch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchRubricRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RubricTemplateView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/users": {
+      "get": {
+        "tags": [
+          "admin/users"
+        ],
+        "operationId": "list",
+        "parameters": [
+          {
+            "name": "role",
+            "in": "query",
+            "description": "Filtra por rol",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/UserRole"
+            }
+          },
+          {
+            "name": "is_active",
+            "in": "query",
+            "description": "Filtra por activo",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserView"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "admin/users"
+        ],
+        "operationId": "create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Usuario creado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserView"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Email ya registrado"
+          },
+          "422": {
+            "description": "Validación falló"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/users/{id}": {
+      "get": {
+        "tags": [
+          "admin/users"
+        ],
+        "operationId": "get_by_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usuario",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontrado"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "admin/users"
+        ],
+        "operationId": "delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Borrado"
+          },
+          "404": {
+            "description": "No encontrado"
+          },
+          "409": {
+            "description": "Tiene evaluaciones — desactivar en su lugar"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "admin/users"
+        ],
+        "operationId": "patch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontrado"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/users/{id}/password": {
+      "put": {
+        "tags": [
+          "admin/users"
+        ],
+        "operationId": "reset_password",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID del usuario",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Password reseteada"
+          },
+          "404": {
+            "description": "No encontrado"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Tokens emitidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body inválido"
+          },
+          "401": {
+            "description": "Credenciales inválidas o usuario inactivo"
+          }
+        }
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Nuevos tokens",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refresh token inválido o usuario inactivo"
+          }
+        }
+      }
+    },
+    "/evaluaciones": {
+      "post": {
+        "tags": [
+          "evaluaciones"
+        ],
+        "operationId": "create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEvaluacionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Replay idempotente — devuelve la existente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluacionView"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Evaluación creada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluacionView"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Jurado no asignado a (prototipo, template)"
+          },
+          "409": {
+            "description": "Evaluación ya existe para esa terna"
+          },
+          "422": {
+            "description": "Score fuera de rango o criterio inválido"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/evaluaciones/{id}": {
+      "get": {
+        "tags": [
+          "evaluaciones"
+        ],
+        "operationId": "get_by_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID de la evaluación",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Evaluación",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluacionView"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No es el dueño ni admin"
+          },
+          "404": {
+            "description": "No encontrada"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "evaluaciones"
+        ],
+        "operationId": "patch_evaluacion",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID de la evaluación",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchEvaluacionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Evaluación actualizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluacionView"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No es el dueño"
+          },
+          "404": {
+            "description": "No encontrada"
+          },
+          "409": {
+            "description": "Ya enviada — no se puede editar"
+          },
+          "422": {
+            "description": "Body inválido"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/evaluaciones/{id}/submit": {
+      "post": {
+        "tags": [
+          "evaluaciones"
+        ],
+        "operationId": "submit",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID de la evaluación",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Evaluación enviada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluacionView"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No es el dueño"
+          },
+          "404": {
+            "description": "No encontrada"
+          },
+          "409": {
+            "description": "Ya enviada o algún criterio sin puntuar"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "me",
+        "responses": {
+          "200": {
+            "description": "Usuario autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin token o token inválido"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/me/asignaciones": {
+      "get": {
+        "tags": [
+          "jurado"
+        ],
+        "operationId": "list_asignaciones",
+        "responses": {
+          "200": {
+            "description": "Asignaciones del jurado autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AsignacionItem"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin token o inválido"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AsignacionItem": {
+        "type": "object",
+        "required": [
+          "prototipo",
+          "rubric",
+          "submitted"
+        ],
+        "properties": {
+          "evaluacion_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "prototipo": {
+            "$ref": "#/components/schemas/PrototipoSummary"
+          },
+          "rubric": {
+            "$ref": "#/components/schemas/RubricSummary"
+          },
+          "submitted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AssignmentView": {
+        "type": "object",
+        "required": [
+          "jurado_id",
+          "prototipo_id",
+          "template_id",
+          "assigned_at"
+        ],
+        "properties": {
+          "assigned_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "jurado_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "prototipo_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "template_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "AssignmentWithJuradoView": {
+        "type": "object",
+        "required": [
+          "jurado",
+          "template_id",
+          "assigned_at"
+        ],
+        "properties": {
+          "assigned_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "jurado": {
+            "$ref": "#/components/schemas/JuradoSummary"
+          },
+          "template_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "CategoriaRef": {
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "nombre"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoriaResultsView": {
+        "type": "object",
+        "required": [
+          "categoria",
+          "edition_id",
+          "rubric_type",
+          "max_total",
+          "prototipos"
+        ],
+        "properties": {
+          "categoria": {
+            "$ref": "#/components/schemas/CategoriaRef"
+          },
+          "edition_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "max_total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Suma máxima alcanzable según la rúbrica activa (0 si no hay rúbrica)."
+          },
+          "prototipos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrototipoResultView"
+            }
+          },
+          "rubric_type": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateAssignmentRequest": {
+        "type": "object",
+        "required": [
+          "jurado_id",
+          "prototipo_id",
+          "template_id"
+        ],
+        "properties": {
+          "jurado_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "prototipo_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "template_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "CreateCriterion": {
+        "type": "object",
+        "required": [
+          "texto",
+          "orden",
+          "max_score",
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/CriterionKindInput"
+          },
+          "max_score": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "orden": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "texto": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateEditionRequest": {
+        "type": "object",
+        "required": [
+          "year",
+          "name"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "year": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "CreateEvaluacionRequest": {
+        "type": "object",
+        "required": [
+          "prototipo_id",
+          "template_id"
+        ],
+        "properties": {
+          "acompanamiento_asesor": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "client_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Caller-supplied id generated on the device. If present, the request is\nidempotent: a replay with the same client_id returns the existing\nevaluation (200) instead of creating a duplicate (201)."
+          },
+          "observaciones": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "opinion_personal": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "prototipo_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scores": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScoreInput"
+            }
+          },
+          "template_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "CreatePrototipoRequest": {
+        "type": "object",
+        "required": [
+          "edition_id",
+          "folio",
+          "nombre"
+        ],
+        "properties": {
+          "categorias": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "descripcion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "edition_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eje_transversal": {
+            "type": "boolean"
+          },
+          "folio": {
+            "type": "string"
+          },
+          "integrantes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntegranteInput"
+            }
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "plantel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CreateRubricRequest": {
+        "type": "object",
+        "required": [
+          "edition_id",
+          "nombre",
+          "tipo"
+        ],
+        "properties": {
+          "categorias": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "descripcion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "edition_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateSection"
+            }
+          },
+          "tipo": {
+            "$ref": "#/components/schemas/RubricType"
+          }
+        }
+      },
+      "CreateSection": {
+        "type": "object",
+        "required": [
+          "nombre",
+          "orden"
+        ],
+        "properties": {
+          "criteria": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateCriterion"
+            }
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "orden": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "peso_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "CreateUserRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "full_name",
+          "role",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          }
+        }
+      },
+      "CriterionKindInput": {
+        "type": "string",
+        "enum": [
+          "scale",
+          "boolean",
+          "text_key"
+        ]
+      },
+      "CriterionView": {
+        "type": "object",
+        "required": [
+          "id",
+          "texto",
+          "orden",
+          "max_score",
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "max_score": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "orden": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "texto": {
+            "type": "string"
+          }
+        }
+      },
+      "EditionView": {
+        "type": "object",
+        "required": [
+          "id",
+          "year",
+          "name",
+          "active",
+          "created_at"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "year": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "EvaluacionResultView": {
+        "type": "object",
+        "required": [
+          "evaluacion_id",
+          "jurado_id",
+          "jurado_nombre",
+          "total",
+          "submitted_at"
+        ],
+        "properties": {
+          "evaluacion_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jurado_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jurado_nombre": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "EvaluacionView": {
+        "type": "object",
+        "required": [
+          "id",
+          "prototipo_id",
+          "template_id",
+          "jurado_id",
+          "scores",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "acompanamiento_asesor": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jurado_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "observaciones": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "opinion_personal": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "prototipo_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scores": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScoreView"
+            }
+          },
+          "submitted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "template_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "IntegranteInput": {
+        "type": "object",
+        "required": [
+          "nombre"
+        ],
+        "properties": {
+          "nombre": {
+            "type": "string"
+          },
+          "rol": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "IntegranteView": {
+        "type": "object",
+        "required": [
+          "id",
+          "nombre"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "rol": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "JuradoSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "full_name",
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "required": [
+          "access_token",
+          "refresh_token",
+          "user"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "refresh_token": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserView"
+          }
+        }
+      },
+      "PatchEditionRequest": {
+        "type": "object",
+        "properties": {
+          "active": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PatchEvaluacionRequest": {
+        "type": "object",
+        "properties": {
+          "acompanamiento_asesor": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "observaciones": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "opinion_personal": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "scores": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ScoreInput"
+            },
+            "description": "Opcional: si se envía, reemplaza TODAS las filas de score para los\ncriterion_id incluidos (upsert). No elimina scores de criterios no\nmencionados — ese es trabajo del cliente si el jurado lo desea."
+          }
+        }
+      },
+      "PatchPrototipoRequest": {
+        "type": "object",
+        "properties": {
+          "descripcion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "eje_transversal": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "nombre": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "plantel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PatchRubricRequest": {
+        "type": "object",
+        "properties": {
+          "activo": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "descripcion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nombre": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PatchUserRequest": {
+        "type": "object",
+        "properties": {
+          "full_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_active": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "role": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UserRole"
+              }
+            ]
+          }
+        }
+      },
+      "PrototipoResultView": {
+        "type": "object",
+        "required": [
+          "prototipo_id",
+          "folio",
+          "nombre",
+          "n_jurados",
+          "evaluaciones"
+        ],
+        "properties": {
+          "evaluaciones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvaluacionResultView"
+            }
+          },
+          "folio": {
+            "type": "string"
+          },
+          "n_jurados": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "promedio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Promedio de los `total` por jurado (null si no hay evaluaciones)."
+          },
+          "prototipo_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "PrototipoSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "edition_id",
+          "folio",
+          "nombre",
+          "eje_transversal",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "edition_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eje_transversal": {
+            "type": "boolean"
+          },
+          "folio": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "plantel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PrototipoView": {
+        "type": "object",
+        "required": [
+          "id",
+          "edition_id",
+          "folio",
+          "nombre",
+          "eje_transversal",
+          "categorias",
+          "integrantes",
+          "created_at"
+        ],
+        "properties": {
+          "categorias": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "descripcion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "edition_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eje_transversal": {
+            "type": "boolean"
+          },
+          "folio": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "integrantes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntegranteView"
+            }
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "plantel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RefreshRequest": {
+        "type": "object",
+        "required": [
+          "refresh_token"
+        ],
+        "properties": {
+          "refresh_token": {
+            "type": "string"
+          }
+        }
+      },
+      "RefreshResponse": {
+        "type": "object",
+        "required": [
+          "access_token",
+          "refresh_token"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "refresh_token": {
+            "type": "string"
+          }
+        }
+      },
+      "ResetPasswordRequest": {
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string"
+          }
+        }
+      },
+      "RubricSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "nombre",
+          "tipo"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "tipo": {
+            "$ref": "#/components/schemas/RubricType"
+          }
+        }
+      },
+      "RubricTemplateSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "edition_id",
+          "nombre",
+          "tipo",
+          "activo",
+          "section_count",
+          "criterion_count"
+        ],
+        "properties": {
+          "activo": {
+            "type": "boolean"
+          },
+          "criterion_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "descripcion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "edition_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "section_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "tipo": {
+            "$ref": "#/components/schemas/RubricType"
+          }
+        }
+      },
+      "RubricTemplateView": {
+        "type": "object",
+        "required": [
+          "id",
+          "edition_id",
+          "nombre",
+          "tipo",
+          "activo",
+          "categorias",
+          "sections"
+        ],
+        "properties": {
+          "activo": {
+            "type": "boolean"
+          },
+          "categorias": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "descripcion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "edition_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SectionView"
+            }
+          },
+          "tipo": {
+            "$ref": "#/components/schemas/RubricType"
+          }
+        }
+      },
+      "RubricType": {
+        "type": "string",
+        "enum": [
+          "exhibicion",
+          "memoria"
+        ]
+      },
+      "ScoreInput": {
+        "type": "object",
+        "required": [
+          "criterion_id"
+        ],
+        "properties": {
+          "criterion_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "score": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "text_answer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ScoreView": {
+        "type": "object",
+        "required": [
+          "criterion_id"
+        ],
+        "properties": {
+          "criterion_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "score": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "text_answer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SectionView": {
+        "type": "object",
+        "required": [
+          "id",
+          "nombre",
+          "orden",
+          "criteria"
+        ],
+        "properties": {
+          "criteria": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CriterionView"
+            }
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "orden": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "peso_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "UserRole": {
+        "type": "string",
+        "enum": [
+          "admin",
+          "jurado"
+        ]
+      },
+      "UserView": {
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "full_name",
+          "role",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "email": {
+            "type": "string"
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_active": {
+            "type": "boolean"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearer_auth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

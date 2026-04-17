@@ -12,6 +12,10 @@ path = "src/lib.rs"
 name = "dems-api"
 path = "src/main.rs"
 
+[[bin]]
+name = "openapi-export"
+path = "src/bin/openapi_export.rs"
+
 [dev-dependencies]
 axum-test = "17"
 http-body-util = "0.1"

@@ -60,6 +60,16 @@ jobs:
       - name: cargo test
         run: cargo test --workspace --locked
 
+      - name: openapi.json in sync
+        run: |
+          tmp=$(mktemp)
+          cargo run --quiet --bin openapi-export -- "$tmp"
+          if ! diff -q "$tmp" ../../packages/shared/openapi.json > /dev/null; then
+            echo "::error::openapi.json out of sync — run 'just openapi-export' and commit."
+            diff -u ../../packages/shared/openapi.json "$tmp" | head -60
+            exit 1
+          fi
+
   mobile:
     name: mobile (flutter)
     runs-on: ubuntu-latest
