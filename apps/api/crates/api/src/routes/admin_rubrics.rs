@@ -1,6 +1,6 @@
 //! Admin CRUD for rubric templates.
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
@@ -263,8 +263,65 @@ fn classify_integrity(e: sqlx::Error, unknown_fk_msg: &str) -> ApiError {
 // List (stub — fleshed out in a later TDD cycle)
 // ---------------------------------------------------------------------------
 
-pub async fn list(_: RequireAdmin) -> Json<Vec<RubricTemplateView>> {
-    Json(vec![])
+// ---------------------------------------------------------------------------
+// List
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct ListParams {
+    pub edition_id: Option<Uuid>,
+    pub tipo: Option<RubricType>,
+    pub activo: Option<bool>,
+}
+
+#[derive(Debug, Serialize, ToSchema, sqlx::FromRow)]
+pub struct RubricTemplateSummary {
+    pub id: Uuid,
+    pub edition_id: Uuid,
+    pub nombre: String,
+    pub tipo: RubricType,
+    pub descripcion: Option<String>,
+    pub activo: bool,
+    pub section_count: i64,
+    pub criterion_count: i64,
+}
+
+pub async fn list(
+    State(state): State<AppState>,
+    _: RequireAdmin,
+    Query(params): Query<ListParams>,
+) -> ApiResult<Json<Vec<RubricTemplateSummary>>> {
+    let rows = sqlx::query_as::<_, RubricTemplateSummary>(
+        r#"
+        SELECT
+            t.id,
+            t.edition_id,
+            t.nombre,
+            t.tipo,
+            t.descripcion,
+            t.activo,
+            (SELECT COUNT(*) FROM rubric_sections s WHERE s.template_id = t.id) AS section_count,
+            (SELECT COUNT(*) FROM rubric_criteria c
+               JOIN rubric_sections s ON s.id = c.section_id
+               WHERE s.template_id = t.id) AS criterion_count
+        FROM rubric_templates t
+        WHERE ($1::uuid IS NULL OR t.edition_id = $1)
+          AND ($2::rubric_type IS NULL OR t.tipo = $2)
+          AND ($3::boolean IS NULL OR t.activo = $3)
+        ORDER BY t.created_at DESC
+        "#,
+    )
+    .bind(params.edition_id)
+    .bind(params.tipo)
+    .bind(params.activo)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "list rubrics query failed");
+        ApiError::Internal(e.into())
+    })?;
+
+    Ok(Json(rows))
 }
 
 // ---------------------------------------------------------------------------

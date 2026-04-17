@@ -70,11 +70,13 @@ pub async fn jurado(pool: &PgPool) -> (Uuid, String) {
     (id, tok)
 }
 
-/// Insert an edition and return its id.
+/// Insert an edition and return its id. Inactive by default because the
+/// partial unique index `idx_editions_one_active` forbids more than one
+/// active edition at a time, which would bite any test that needs two.
 pub async fn seed_edition(pool: &PgPool, year: i32) -> Uuid {
     let id = Uuid::new_v4();
     sqlx::query(
-        r#"INSERT INTO editions (id, year, name, active) VALUES ($1, $2, $3, true)"#,
+        r#"INSERT INTO editions (id, year, name, active) VALUES ($1, $2, $3, false)"#,
     )
     .bind(id)
     .bind(year)
