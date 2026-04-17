@@ -87,6 +87,105 @@ pub async fn seed_edition(pool: &PgPool, year: i32) -> Uuid {
     id
 }
 
+/// Insert a prototipo and return its id.
+pub async fn insert_prototipo(
+    pool: &PgPool,
+    edition_id: Uuid,
+    folio: &str,
+    nombre: &str,
+) -> Uuid {
+    let id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO prototipos (id, edition_id, folio, nombre)
+           VALUES ($1, $2, $3, $4)"#,
+    )
+    .bind(id)
+    .bind(edition_id)
+    .bind(folio)
+    .bind(nombre)
+    .execute(pool)
+    .await
+    .expect("insert prototipo");
+    id
+}
+
+/// Assign a jurado to a prototipo under a specific rubric template.
+pub async fn assign_jurado(
+    pool: &PgPool,
+    jurado_id: Uuid,
+    prototipo_id: Uuid,
+    template_id: Uuid,
+) {
+    sqlx::query(
+        r#"INSERT INTO assignments (jurado_id, prototipo_id, template_id)
+           VALUES ($1, $2, $3)"#,
+    )
+    .bind(jurado_id)
+    .bind(prototipo_id)
+    .bind(template_id)
+    .execute(pool)
+    .await
+    .expect("insert assignment");
+}
+
+/// Insert a minimal rubric template (empty tree) and return its id.
+pub async fn seed_rubric_template(
+    pool: &PgPool,
+    edition_id: Uuid,
+    nombre: &str,
+    tipo: &str,
+) -> Uuid {
+    let id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO rubric_templates (id, edition_id, nombre, tipo, activo)
+           VALUES ($1, $2, $3, $4::rubric_type, true)"#,
+    )
+    .bind(id)
+    .bind(edition_id)
+    .bind(nombre)
+    .bind(tipo)
+    .execute(pool)
+    .await
+    .expect("insert rubric_template");
+    id
+}
+
+/// Insert a section with a single criterion and return (section_id, criterion_id).
+pub async fn seed_section_with_criterion(
+    pool: &PgPool,
+    template_id: Uuid,
+    section_orden: i32,
+    criterion_texto: &str,
+    max_score: i32,
+) -> (Uuid, Uuid) {
+    let section_id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO rubric_sections (id, template_id, nombre, orden)
+           VALUES ($1, $2, 'S', $3)"#,
+    )
+    .bind(section_id)
+    .bind(template_id)
+    .bind(section_orden)
+    .execute(pool)
+    .await
+    .expect("insert section");
+
+    let criterion_id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO rubric_criteria (id, section_id, texto, orden, max_score, kind)
+           VALUES ($1, $2, $3, 1, $4, 'scale'::criterion_kind)"#,
+    )
+    .bind(criterion_id)
+    .bind(section_id)
+    .bind(criterion_texto)
+    .bind(max_score)
+    .execute(pool)
+    .await
+    .expect("insert criterion");
+
+    (section_id, criterion_id)
+}
+
 /// Insert a categoría and return its id.
 pub async fn seed_categoria(pool: &PgPool, slug: &str, nombre: &str) -> Uuid {
     let id = Uuid::new_v4();
