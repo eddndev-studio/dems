@@ -26,7 +26,7 @@ pub fn router(state: AppState) -> Router {
         .route("/evaluaciones", post(evaluacion_routes::create))
         .route(
             "/evaluaciones/:id",
-            get(evaluacion_routes::get_by_id),
+            get(evaluacion_routes::get_by_id).patch(evaluacion_routes::patch_evaluacion),
         )
         .route(
             "/admin/rubric-templates",

@@ -123,62 +123,7 @@ pub async fn create(
     }
 
     // --- Validate every score against its criterion up front. ---
-    // Fetching the rubric's criteria once avoids N+1 and lets us reject the
-    // whole payload before touching any row.
-    if !req.scores.is_empty() {
-        let crit_rows: Vec<(Uuid, i32, String)> = sqlx::query_as(
-            r#"SELECT c.id, c.max_score, c.kind::text
-               FROM rubric_criteria c
-               JOIN rubric_sections s ON s.id = c.section_id
-               WHERE s.template_id = $1"#,
-        )
-        .bind(req.template_id)
-        .fetch_all(&state.pool)
-        .await
-        .map_err(|e| ApiError::Internal(e.into()))?;
-
-        let catalog: HashMap<Uuid, (i32, String)> = crit_rows
-            .into_iter()
-            .map(|(id, max, kind)| (id, (max, kind)))
-            .collect();
-
-        for s in &req.scores {
-            let Some((max, kind)) = catalog.get(&s.criterion_id) else {
-                return Err(ApiError::Core(dems_core::CoreError::Validation(format!(
-                    "criterion {} does not belong to template",
-                    s.criterion_id
-                ))));
-            };
-            match kind.as_str() {
-                "scale" | "boolean" => match s.score {
-                    Some(v) if v >= 0 && v <= *max => {}
-                    Some(_) => {
-                        return Err(ApiError::Core(dems_core::CoreError::Validation(
-                            format!("score out of range for criterion {}", s.criterion_id),
-                        )))
-                    }
-                    None => {
-                        return Err(ApiError::Core(dems_core::CoreError::Validation(
-                            format!("numeric criterion {} requires score", s.criterion_id),
-                        )))
-                    }
-                },
-                "text_key" => {
-                    if s.text_answer.is_none() {
-                        return Err(ApiError::Core(dems_core::CoreError::Validation(format!(
-                            "text criterion {} requires text_answer",
-                            s.criterion_id
-                        ))));
-                    }
-                }
-                other => {
-                    return Err(ApiError::Internal(anyhow::anyhow!(
-                        "unknown criterion kind: {other}"
-                    )))
-                }
-            }
-        }
-    }
+    validate_scores_against_template(&state.pool, req.template_id, &req.scores).await?;
 
     // --- Write evaluation + scores in one transaction. ---
     let mut tx = state
@@ -297,6 +242,181 @@ pub async fn get_by_id(
         return Err(ApiError::Core(dems_core::CoreError::Forbidden));
     }
     Ok(Json(view))
+}
+
+// ---------------------------------------------------------------------------
+// PATCH /evaluaciones/:id
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct PatchEvaluacionRequest {
+    #[serde(default)]
+    pub observaciones: Option<String>,
+    #[serde(default)]
+    pub acompanamiento_asesor: Option<bool>,
+    #[serde(default)]
+    #[validate(range(min = 0, max = 100))]
+    pub opinion_personal: Option<i32>,
+    /// Opcional: si se envía, reemplaza TODAS las filas de score para los
+    /// criterion_id incluidos (upsert). No elimina scores de criterios no
+    /// mencionados — ese es trabajo del cliente si el jurado lo desea.
+    #[serde(default)]
+    pub scores: Option<Vec<ScoreInput>>,
+}
+
+pub async fn patch_evaluacion(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<Uuid>,
+    Json(req): Json<PatchEvaluacionRequest>,
+) -> ApiResult<Json<EvaluacionView>> {
+    req.validate()
+        .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
+
+    let (jurado_id, template_id, submitted_at) = sqlx::query_as::<_, (Uuid, Uuid, Option<DateTime<Utc>>)>(
+        r#"SELECT jurado_id, template_id, submitted_at
+           FROM evaluaciones WHERE id = $1"#,
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?
+    .ok_or(ApiError::Core(dems_core::CoreError::NotFound))?;
+
+    if jurado_id != user.id {
+        return Err(ApiError::Core(dems_core::CoreError::Forbidden));
+    }
+    if submitted_at.is_some() {
+        return Err(ApiError::Core(dems_core::CoreError::Conflict(
+            "evaluation already submitted; cannot edit".into(),
+        )));
+    }
+
+    if let Some(scores) = &req.scores {
+        validate_scores_against_template(&state.pool, template_id, scores).await?;
+    }
+
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+
+    sqlx::query(
+        r#"UPDATE evaluaciones
+           SET observaciones = COALESCE($2, observaciones),
+               acompanamiento_asesor = COALESCE($3, acompanamiento_asesor),
+               opinion_personal = COALESCE($4, opinion_personal)
+           WHERE id = $1"#,
+    )
+    .bind(id)
+    .bind(&req.observaciones)
+    .bind(req.acompanamiento_asesor)
+    .bind(req.opinion_personal)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    if let Some(scores) = req.scores {
+        for s in scores {
+            sqlx::query(
+                r#"INSERT INTO evaluacion_scores
+                       (evaluacion_id, criterion_id, score, text_answer)
+                   VALUES ($1, $2, $3, $4)
+                   ON CONFLICT (evaluacion_id, criterion_id)
+                   DO UPDATE SET score = EXCLUDED.score,
+                                 text_answer = EXCLUDED.text_answer"#,
+            )
+            .bind(id)
+            .bind(s.criterion_id)
+            .bind(s.score)
+            .bind(&s.text_answer)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                if let sqlx::Error::Database(db) = &e {
+                    if db.is_check_violation() {
+                        return ApiError::Core(dems_core::CoreError::Validation(
+                            "score or text_answer must be set".into(),
+                        ));
+                    }
+                }
+                ApiError::Internal(e.into())
+            })?;
+        }
+    }
+
+    tx.commit().await.map_err(|e| ApiError::Internal(e.into()))?;
+    load_evaluacion(&state, id).await.map(Json)
+}
+
+// ---------------------------------------------------------------------------
+// Shared: validate a batch of scores against a rubric template
+// ---------------------------------------------------------------------------
+
+async fn validate_scores_against_template(
+    pool: &sqlx::PgPool,
+    template_id: Uuid,
+    scores: &[ScoreInput],
+) -> ApiResult<()> {
+    if scores.is_empty() {
+        return Ok(());
+    }
+    let crit_rows: Vec<(Uuid, i32, String)> = sqlx::query_as(
+        r#"SELECT c.id, c.max_score, c.kind::text
+           FROM rubric_criteria c
+           JOIN rubric_sections s ON s.id = c.section_id
+           WHERE s.template_id = $1"#,
+    )
+    .bind(template_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    let catalog: HashMap<Uuid, (i32, String)> = crit_rows
+        .into_iter()
+        .map(|(id, max, kind)| (id, (max, kind)))
+        .collect();
+
+    for s in scores {
+        let Some((max, kind)) = catalog.get(&s.criterion_id) else {
+            return Err(ApiError::Core(dems_core::CoreError::Validation(format!(
+                "criterion {} does not belong to template",
+                s.criterion_id
+            ))));
+        };
+        match kind.as_str() {
+            "scale" | "boolean" => match s.score {
+                Some(v) if v >= 0 && v <= *max => {}
+                Some(_) => {
+                    return Err(ApiError::Core(dems_core::CoreError::Validation(format!(
+                        "score out of range for criterion {}",
+                        s.criterion_id
+                    ))))
+                }
+                None => {
+                    return Err(ApiError::Core(dems_core::CoreError::Validation(format!(
+                        "numeric criterion {} requires score",
+                        s.criterion_id
+                    ))))
+                }
+            },
+            "text_key" => {
+                if s.text_answer.is_none() {
+                    return Err(ApiError::Core(dems_core::CoreError::Validation(format!(
+                        "text criterion {} requires text_answer",
+                        s.criterion_id
+                    ))));
+                }
+            }
+            other => {
+                return Err(ApiError::Internal(anyhow::anyhow!(
+                    "unknown criterion kind: {other}"
+                )))
+            }
+        }
+    }
+    Ok(())
 }
 
 async fn load_evaluacion(state: &AppState, id: Uuid) -> ApiResult<EvaluacionView> {
