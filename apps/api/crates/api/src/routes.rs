@@ -9,6 +9,7 @@ use crate::state::AppState;
 
 mod admin_editions;
 mod admin_rubrics;
+mod admin_users;
 mod auth_routes;
 mod evaluacion_routes;
 mod jurado_routes;
@@ -32,6 +33,20 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/evaluaciones/:id/submit",
             post(evaluacion_routes::submit),
+        )
+        .route(
+            "/admin/users",
+            get(admin_users::list).post(admin_users::create),
+        )
+        .route(
+            "/admin/users/:id",
+            get(admin_users::get_by_id)
+                .patch(admin_users::patch)
+                .delete(admin_users::delete),
+        )
+        .route(
+            "/admin/users/:id/password",
+            axum::routing::put(admin_users::reset_password),
         )
         .route(
             "/admin/editions",
