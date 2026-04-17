@@ -1,0 +1,49 @@
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/ephemeral/
+**/android/.gradle/
+**/android/local.properties
+**/android/app/debug
+**/android/app/profile
+**/android/app/release
+**/linux/flutter/ephemeral/
+**/macos/Flutter/ephemeral/
+**/windows/flutter/ephemeral/
+*.g.dart
+*.freezed.dart
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# DB / local data
+pgdata/
+*.sqlite
+*.sqlite-journal
+*.db
+
+# Logs
+*.log
+logs/
