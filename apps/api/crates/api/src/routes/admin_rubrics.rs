@@ -122,13 +122,13 @@ pub async fn create(
     Json(req): Json<CreateRubricRequest>,
 ) -> ApiResult<impl IntoResponse> {
     req.validate()
-        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
     for s in &req.sections {
         s.validate()
-            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+            .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
         for c in &s.criteria {
             c.validate()
-                .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+                .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
         }
     }
 
@@ -333,6 +333,10 @@ pub async fn get_by_id(
     _: RequireAdmin,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<RubricTemplateView>> {
+    load_tree(&state, id).await.map(Json)
+}
+
+async fn load_tree(state: &AppState, id: Uuid) -> ApiResult<RubricTemplateView> {
     // 1. Template metadata.
     let template = sqlx::query_as::<_, (Uuid, Uuid, String, RubricType, Option<String>, bool)>(
         r#"SELECT id, edition_id, nombre, tipo, descripcion, activo
@@ -407,7 +411,7 @@ pub async fn get_by_id(
         .collect();
 
     let (tid, edition_id, nombre, tipo, descripcion, activo) = template;
-    Ok(Json(RubricTemplateView {
+    Ok(RubricTemplateView {
         id: tid,
         edition_id,
         nombre,
@@ -416,5 +420,52 @@ pub async fn get_by_id(
         activo,
         categorias,
         sections,
-    }))
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Patch (metadata only; structural changes go through dedicated endpoints)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct PatchRubricRequest {
+    #[validate(length(min = 1, max = 200))]
+    pub nombre: Option<String>,
+    pub descripcion: Option<String>,
+    pub activo: Option<bool>,
+}
+
+pub async fn patch(
+    State(state): State<AppState>,
+    _: RequireAdmin,
+    Path(id): Path<Uuid>,
+    Json(req): Json<PatchRubricRequest>,
+) -> ApiResult<Json<RubricTemplateView>> {
+    req.validate()
+        .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
+
+    // COALESCE deja sin tocar cualquier columna cuyo parámetro sea NULL, así
+    // podemos recibir un subset de campos. descripcion acepta null como
+    // "no tocar" también; el cliente que quiera borrarla usa "" hasta que
+    // añadamos sumergido explícito (Option<Option<_>>).
+    let affected = sqlx::query(
+        r#"UPDATE rubric_templates
+           SET nombre = COALESCE($2, nombre),
+               descripcion = COALESCE($3, descripcion),
+               activo = COALESCE($4, activo)
+           WHERE id = $1"#,
+    )
+    .bind(id)
+    .bind(&req.nombre)
+    .bind(&req.descripcion)
+    .bind(req.activo)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    if affected.rows_affected() == 0 {
+        return Err(ApiError::Core(dems_core::CoreError::NotFound));
+    }
+
+    load_tree(&state, id).await.map(Json)
 }
