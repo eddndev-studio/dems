@@ -73,3 +73,25 @@ impl FromRequestParts<AppState> for CurrentUser {
         })
     }
 }
+
+/// Admin-only extractor. Rejects any authenticated caller whose role is not
+/// `admin` with 403, and falls back to `CurrentUser`'s 401 on missing or
+/// invalid credentials.
+#[derive(Debug, Clone)]
+pub struct RequireAdmin(pub CurrentUser);
+
+#[async_trait]
+impl FromRequestParts<AppState> for RequireAdmin {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let user = CurrentUser::from_request_parts(parts, state).await?;
+        if !matches!(user.role, UserRole::Admin) {
+            return Err(ApiError::Core(CoreError::Forbidden));
+        }
+        Ok(RequireAdmin(user))
+    }
+}

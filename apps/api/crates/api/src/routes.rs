@@ -7,6 +7,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::state::AppState;
 
+mod admin_rubrics;
 mod auth_routes;
 
 pub fn router(state: AppState) -> Router {
@@ -16,6 +17,7 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/login", post(auth_routes::login))
         .route("/auth/refresh", post(auth_routes::refresh))
         .route("/me", get(auth_routes::me))
+        .route("/admin/rubric-templates", get(admin_rubrics::list))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
