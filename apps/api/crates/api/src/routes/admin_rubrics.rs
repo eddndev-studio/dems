@@ -1,6 +1,6 @@
 //! Admin CRUD for rubric templates.
 
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
@@ -265,4 +265,99 @@ fn classify_integrity(e: sqlx::Error, unknown_fk_msg: &str) -> ApiError {
 
 pub async fn list(_: RequireAdmin) -> Json<Vec<RubricTemplateView>> {
     Json(vec![])
+}
+
+// ---------------------------------------------------------------------------
+// Get by id (full tree)
+// ---------------------------------------------------------------------------
+
+pub async fn get_by_id(
+    State(state): State<AppState>,
+    _: RequireAdmin,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<RubricTemplateView>> {
+    // 1. Template metadata.
+    let template = sqlx::query_as::<_, (Uuid, Uuid, String, RubricType, Option<String>, bool)>(
+        r#"SELECT id, edition_id, nombre, tipo, descripcion, activo
+           FROM rubric_templates WHERE id = $1"#,
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?
+    .ok_or(ApiError::Core(dems_core::CoreError::NotFound))?;
+
+    // 2. Secciones (ordenadas).
+    let section_rows = sqlx::query_as::<_, (Uuid, String, i32, Option<f64>)>(
+        r#"SELECT id, nombre, orden, peso_pct
+           FROM rubric_sections WHERE template_id = $1
+           ORDER BY orden ASC"#,
+    )
+    .bind(id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    // 3. Criterios de todas las secciones en un solo round-trip.
+    let section_ids: Vec<Uuid> = section_rows.iter().map(|(sid, ..)| *sid).collect();
+    let criterion_rows: Vec<(Uuid, Uuid, String, i32, i32, String)> = if section_ids.is_empty() {
+        vec![]
+    } else {
+        sqlx::query_as(
+            r#"SELECT id, section_id, texto, orden, max_score, kind::text
+               FROM rubric_criteria WHERE section_id = ANY($1)
+               ORDER BY orden ASC"#,
+        )
+        .bind(&section_ids)
+        .fetch_all(&state.pool)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?
+    };
+
+    // 4. Categorías vinculadas.
+    let categorias: Vec<Uuid> = sqlx::query_scalar(
+        r#"SELECT categoria_id FROM rubric_template_categorias
+           WHERE template_id = $1 ORDER BY categoria_id"#,
+    )
+    .bind(id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    // Ensamble: secciones en orden, criterios agrupados por section_id.
+    let sections: Vec<SectionView> = section_rows
+        .into_iter()
+        .map(|(sid, nombre, orden, peso_pct)| {
+            let criteria: Vec<CriterionView> = criterion_rows
+                .iter()
+                .filter(|c| c.1 == sid)
+                .map(|(cid, _, texto, orden, max_score, kind)| CriterionView {
+                    id: *cid,
+                    texto: texto.clone(),
+                    orden: *orden,
+                    max_score: *max_score,
+                    kind: kind.clone(),
+                })
+                .collect();
+            SectionView {
+                id: sid,
+                nombre,
+                orden,
+                peso_pct,
+                criteria,
+            }
+        })
+        .collect();
+
+    let (tid, edition_id, nombre, tipo, descripcion, activo) = template;
+    Ok(Json(RubricTemplateView {
+        id: tid,
+        edition_id,
+        nombre,
+        tipo,
+        descripcion,
+        activo,
+        categorias,
+        sections,
+    }))
 }

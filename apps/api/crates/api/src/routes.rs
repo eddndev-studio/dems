@@ -21,6 +21,10 @@ pub fn router(state: AppState) -> Router {
             "/admin/rubric-templates",
             get(admin_rubrics::list).post(admin_rubrics::create),
         )
+        .route(
+            "/admin/rubric-templates/:id",
+            get(admin_rubrics::get_by_id),
+        )
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
