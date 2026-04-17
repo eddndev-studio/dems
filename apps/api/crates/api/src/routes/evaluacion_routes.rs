@@ -1,5 +1,7 @@
 //! Evaluation endpoints used by the jurado app.
 
+use std::collections::HashMap;
+
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -8,15 +10,38 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
+use validator::Validate;
 
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::CurrentUser;
 use crate::state::AppState;
 
-#[derive(Debug, Deserialize, ToSchema)]
+// ---------------------------------------------------------------------------
+// Request / response
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateEvaluacionRequest {
     pub prototipo_id: Uuid,
     pub template_id: Uuid,
+    #[serde(default)]
+    pub observaciones: Option<String>,
+    #[serde(default)]
+    pub acompanamiento_asesor: Option<bool>,
+    #[serde(default)]
+    #[validate(range(min = 0, max = 100))]
+    pub opinion_personal: Option<i32>,
+    #[serde(default)]
+    pub scores: Vec<ScoreInput>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ScoreInput {
+    pub criterion_id: Uuid,
+    #[serde(default)]
+    pub score: Option<i32>,
+    #[serde(default)]
+    pub text_answer: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -29,19 +54,31 @@ pub struct EvaluacionView {
     pub observaciones: Option<String>,
     pub acompanamiento_asesor: Option<bool>,
     pub opinion_personal: Option<i32>,
+    pub scores: Vec<ScoreView>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ScoreView {
+    pub criterion_id: Uuid,
+    pub score: Option<i32>,
+    pub text_answer: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// POST /evaluaciones
+// ---------------------------------------------------------------------------
 
 pub async fn create(
     State(state): State<AppState>,
     user: CurrentUser,
     Json(req): Json<CreateEvaluacionRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // Authorisation comes from `assignments`, not from role: only the jurado
-    // assigned to (prototipo, template) can create the evaluation.
-    // Unknown ids also fail this check (no assignment row exists), which
-    // conveniently prevents ID enumeration.
+    req.validate()
+        .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
+
+    // --- Authorisation: must be assigned to (prototipo, template). ---
     let assigned: bool = sqlx::query_scalar(
         r#"SELECT EXISTS (
                SELECT 1 FROM assignments
@@ -54,10 +91,74 @@ pub async fn create(
     .fetch_one(&state.pool)
     .await
     .map_err(|e| ApiError::Internal(e.into()))?;
-
     if !assigned {
         return Err(ApiError::Core(dems_core::CoreError::Forbidden));
     }
+
+    // --- Validate every score against its criterion up front. ---
+    // Fetching the rubric's criteria once avoids N+1 and lets us reject the
+    // whole payload before touching any row.
+    if !req.scores.is_empty() {
+        let crit_rows: Vec<(Uuid, i32, String)> = sqlx::query_as(
+            r#"SELECT c.id, c.max_score, c.kind::text
+               FROM rubric_criteria c
+               JOIN rubric_sections s ON s.id = c.section_id
+               WHERE s.template_id = $1"#,
+        )
+        .bind(req.template_id)
+        .fetch_all(&state.pool)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+
+        let catalog: HashMap<Uuid, (i32, String)> = crit_rows
+            .into_iter()
+            .map(|(id, max, kind)| (id, (max, kind)))
+            .collect();
+
+        for s in &req.scores {
+            let Some((max, kind)) = catalog.get(&s.criterion_id) else {
+                return Err(ApiError::Core(dems_core::CoreError::Validation(format!(
+                    "criterion {} does not belong to template",
+                    s.criterion_id
+                ))));
+            };
+            match kind.as_str() {
+                "scale" | "boolean" => match s.score {
+                    Some(v) if v >= 0 && v <= *max => {}
+                    Some(_) => {
+                        return Err(ApiError::Core(dems_core::CoreError::Validation(
+                            format!("score out of range for criterion {}", s.criterion_id),
+                        )))
+                    }
+                    None => {
+                        return Err(ApiError::Core(dems_core::CoreError::Validation(
+                            format!("numeric criterion {} requires score", s.criterion_id),
+                        )))
+                    }
+                },
+                "text_key" => {
+                    if s.text_answer.is_none() {
+                        return Err(ApiError::Core(dems_core::CoreError::Validation(format!(
+                            "text criterion {} requires text_answer",
+                            s.criterion_id
+                        ))));
+                    }
+                }
+                other => {
+                    return Err(ApiError::Internal(anyhow::anyhow!(
+                        "unknown criterion kind: {other}"
+                    )))
+                }
+            }
+        }
+    }
+
+    // --- Write evaluation + scores in one transaction. ---
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
 
     let id = Uuid::new_v4();
     let row = sqlx::query_as::<_, (
@@ -72,8 +173,10 @@ pub async fn create(
         DateTime<Utc>,
         DateTime<Utc>,
     )>(
-        r#"INSERT INTO evaluaciones (id, prototipo_id, jurado_id, template_id)
-           VALUES ($1, $2, $3, $4)
+        r#"INSERT INTO evaluaciones
+               (id, prototipo_id, jurado_id, template_id,
+                observaciones, acompanamiento_asesor, opinion_personal)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
            RETURNING id, prototipo_id, jurado_id, template_id,
                      submitted_at, observaciones, acompanamiento_asesor,
                      opinion_personal, created_at, updated_at"#,
@@ -82,7 +185,10 @@ pub async fn create(
     .bind(req.prototipo_id)
     .bind(user.id)
     .bind(req.template_id)
-    .fetch_one(&state.pool)
+    .bind(&req.observaciones)
+    .bind(req.acompanamiento_asesor)
+    .bind(req.opinion_personal)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
         if let sqlx::Error::Database(db) = &e {
@@ -95,6 +201,38 @@ pub async fn create(
         ApiError::Internal(e.into())
     })?;
 
+    let mut score_views: Vec<ScoreView> = Vec::with_capacity(req.scores.len());
+    for s in req.scores {
+        sqlx::query(
+            r#"INSERT INTO evaluacion_scores
+                   (evaluacion_id, criterion_id, score, text_answer)
+               VALUES ($1, $2, $3, $4)"#,
+        )
+        .bind(id)
+        .bind(s.criterion_id)
+        .bind(s.score)
+        .bind(&s.text_answer)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            if let sqlx::Error::Database(db) = &e {
+                if db.is_check_violation() {
+                    return ApiError::Core(dems_core::CoreError::Validation(
+                        "score or text_answer must be set".into(),
+                    ));
+                }
+            }
+            ApiError::Internal(e.into())
+        })?;
+        score_views.push(ScoreView {
+            criterion_id: s.criterion_id,
+            score: s.score,
+            text_answer: s.text_answer,
+        });
+    }
+
+    tx.commit().await.map_err(|e| ApiError::Internal(e.into()))?;
+
     let view = EvaluacionView {
         id: row.0,
         prototipo_id: row.1,
@@ -104,6 +242,7 @@ pub async fn create(
         observaciones: row.5,
         acompanamiento_asesor: row.6,
         opinion_personal: row.7,
+        scores: score_views,
         created_at: row.8,
         updated_at: row.9,
     };
