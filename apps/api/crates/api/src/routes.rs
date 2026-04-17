@@ -14,6 +14,7 @@ pub fn router(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .route("/auth/login", post(auth_routes::login))
+        .route("/auth/refresh", post(auth_routes::refresh))
         .route("/me", get(auth_routes::me))
         .layer(TraceLayer::new_for_http())
         .with_state(state)

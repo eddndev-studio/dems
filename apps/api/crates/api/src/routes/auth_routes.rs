@@ -100,3 +100,65 @@ pub async fn me(user: CurrentUser) -> Json<UserView> {
         role: user.role,
     })
 }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RefreshRequest {
+    pub refresh_token: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RefreshResponse {
+    pub access_token: String,
+    pub refresh_token: String,
+}
+
+pub async fn refresh(
+    State(state): State<AppState>,
+    Json(req): Json<RefreshRequest>,
+) -> ApiResult<Json<RefreshResponse>> {
+    // Solo aceptamos tokens kind=refresh — un access token robado no debe
+    // poder renovar tokens indefinidamente.
+    let claims = auth::verify_kind(
+        &state.cfg.jwt_secret,
+        &req.refresh_token,
+        TokenKind::Refresh,
+    )
+    .map_err(|_| ApiError::Core(dems_core::CoreError::Unauthorized))?;
+
+    // Confirmamos que el usuario sigue activo: un admin que desactiva a
+    // un jurado debe cortarle la renovación de tokens.
+    let is_active = sqlx::query_scalar::<_, bool>(
+        r#"SELECT is_active FROM users WHERE id = $1"#,
+    )
+    .bind(claims.sub)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    if is_active != Some(true) {
+        return Err(ApiError::Core(dems_core::CoreError::Unauthorized));
+    }
+
+    let access_token = auth::issue(
+        &state.cfg.jwt_secret,
+        claims.sub,
+        claims.role,
+        state.cfg.jwt_access_ttl_secs,
+        TokenKind::Access,
+    )
+    .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
+    // Rotamos también el refresh: limita el impacto si un refresh se filtra.
+    let refresh_token = auth::issue(
+        &state.cfg.jwt_secret,
+        claims.sub,
+        claims.role,
+        state.cfg.jwt_refresh_ttl_secs,
+        TokenKind::Refresh,
+    )
+    .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
+
+    Ok(Json(RefreshResponse {
+        access_token,
+        refresh_token,
+    }))
+}
