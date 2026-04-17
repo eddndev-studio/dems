@@ -88,6 +88,10 @@ pub fn router(state: AppState) -> Router {
             get(admin_results::by_categoria),
         )
         .route(
+            "/admin/results/edition/:id/export.csv",
+            get(admin_results::export_csv),
+        )
+        .route(
             "/admin/evaluaciones/:id/reopen",
             post(evaluacion_routes::reopen),
         )

@@ -5,10 +5,13 @@
 //! no cuentan: el promedio del concurso se calcula sólo sobre lo entregado.
 
 use axum::extract::{Path, Query, State};
+use axum::http::{header, HeaderMap, HeaderValue};
+use axum::response::IntoResponse;
 use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -224,4 +227,144 @@ pub async fn by_categoria(
         max_total,
         prototipos,
     }))
+}
+
+// ---------------------------------------------------------------------------
+// GET /admin/results/edition/:id/export.csv
+// ---------------------------------------------------------------------------
+
+/// CSV con todos los prototipos de la edición. Una fila por (categoría,
+/// prototipo). Promedio sobre evaluaciones submitted del rubric_type
+/// solicitado.
+pub async fn export_csv(
+    State(state): State<AppState>,
+    _: RequireAdmin,
+    Path(edition_id): Path<Uuid>,
+    Query(q): Query<ExportQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let rubric_type = q.rubric_type.as_deref().unwrap_or("exhibicion");
+    if !matches!(rubric_type, "exhibicion" | "memoria") {
+        return Err(ApiError::BadRequest(
+            "rubric_type must be 'exhibicion' or 'memoria'".into(),
+        ));
+    }
+
+    let edition: Option<i32> = sqlx::query_scalar("SELECT year FROM editions WHERE id = $1")
+        .bind(edition_id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+    let Some(year) = edition else {
+        return Err(ApiError::Core(dems_core::CoreError::NotFound));
+    };
+
+    let max_total: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE((
+            SELECT SUM(c.max_score)::BIGINT
+            FROM rubric_criteria c
+            JOIN rubric_sections s ON s.id = c.section_id
+            WHERE s.template_id = (
+                SELECT id FROM rubric_templates
+                WHERE edition_id = $1 AND tipo = $2::rubric_type AND activo
+                ORDER BY created_at DESC
+                LIMIT 1
+            )
+            AND c.kind IN ('scale', 'boolean')
+        ), 0)
+        "#,
+    )
+    .bind(edition_id)
+    .bind(rubric_type)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    // Una fila por (categoria, prototipo). Promedio sobre evals submitted del
+    // tipo solicitado. LEFT JOIN para incluir prototipos sin evaluaciones.
+    let rows = sqlx::query_as::<_, (String, String, String, String, i64, Option<f64>)>(
+        r#"
+        WITH ev_totals AS (
+            SELECT ev.prototipo_id, ev.id AS ev_id,
+                   COALESCE(SUM(es.score)::BIGINT, 0) AS total
+            FROM evaluaciones ev
+            LEFT JOIN evaluacion_scores es ON es.evaluacion_id = ev.id
+            WHERE ev.submitted_at IS NOT NULL
+              AND ev.template_id IN (
+                  SELECT id FROM rubric_templates
+                  WHERE edition_id = $1 AND tipo = $2::rubric_type
+              )
+            GROUP BY ev.prototipo_id, ev.id
+        )
+        SELECT
+            cat.slug, cat.nombre, p.folio, p.nombre,
+            COALESCE(COUNT(t.ev_id), 0)::BIGINT AS n_jurados,
+            AVG(t.total)::DOUBLE PRECISION AS promedio
+        FROM prototipos p
+        JOIN prototipo_categorias pc ON pc.prototipo_id = p.id
+        JOIN categorias cat ON cat.id = pc.categoria_id
+        LEFT JOIN ev_totals t ON t.prototipo_id = p.id
+        WHERE p.edition_id = $1
+        GROUP BY cat.slug, cat.nombre, cat.orden, p.folio, p.nombre
+        ORDER BY cat.orden, cat.slug, p.folio
+        "#,
+    )
+    .bind(edition_id)
+    .bind(rubric_type)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    let mut body = String::new();
+    body.push_str("categoria_slug,categoria,folio,prototipo,n_jurados,promedio,max_total\n");
+    for (slug, nombre_cat, folio, nombre_p, n, promedio) in rows {
+        let _ = write!(
+            body,
+            "{},{},{},{},{},{},{}\n",
+            csv_escape(&slug),
+            csv_escape(&nombre_cat),
+            csv_escape(&folio),
+            csv_escape(&nombre_p),
+            n,
+            promedio
+                .map(|v| {
+                    // Imprimir enteros sin .0 cuando el promedio es exacto.
+                    if (v.fract()).abs() < f64::EPSILON {
+                        format!("{}", v as i64)
+                    } else {
+                        format!("{v}")
+                    }
+                })
+                .unwrap_or_default(),
+            max_total,
+        );
+    }
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/csv; charset=utf-8"),
+    );
+    let filename = format!("resultados-edicion-{year}-{rubric_type}.csv");
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
+            .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
+    );
+    Ok((headers, body))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ExportQuery {
+    #[serde(default)]
+    pub rubric_type: Option<String>,
+}
+
+fn csv_escape(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
+        let escaped = s.replace('"', "\"\"");
+        format!("\"{escaped}\"")
+    } else {
+        s.to_string()
+    }
 }
