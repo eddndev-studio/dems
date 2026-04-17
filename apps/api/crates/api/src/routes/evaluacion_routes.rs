@@ -24,6 +24,12 @@ use crate::state::AppState;
 pub struct CreateEvaluacionRequest {
     pub prototipo_id: Uuid,
     pub template_id: Uuid,
+    /// Caller-supplied id generated on the device. If present, the request is
+    /// idempotent: a replay with the same client_id returns the existing
+    /// evaluation (200) instead of creating a duplicate (201).
+    #[serde(default)]
+    #[validate(length(min = 1, max = 128))]
+    pub client_id: Option<String>,
     #[serde(default)]
     pub observaciones: Option<String>,
     #[serde(default)]
@@ -77,6 +83,25 @@ pub async fn create(
 ) -> ApiResult<impl IntoResponse> {
     req.validate()
         .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
+
+    // --- Idempotency: replay with the same (jurado, client_id) returns the
+    //     existing evaluation so the offline sync worker can safely retry.
+    if let Some(cid) = &req.client_id {
+        let existing: Option<Uuid> = sqlx::query_scalar(
+            r#"SELECT id FROM evaluaciones
+               WHERE jurado_id = $1 AND client_id = $2"#,
+        )
+        .bind(user.id)
+        .bind(cid)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+
+        if let Some(id) = existing {
+            let view = load_evaluacion(&state, id).await?;
+            return Ok((StatusCode::OK, Json(view)));
+        }
+    }
 
     // --- Authorisation: must be assigned to (prototipo, template). ---
     let assigned: bool = sqlx::query_scalar(
@@ -174,9 +199,9 @@ pub async fn create(
         DateTime<Utc>,
     )>(
         r#"INSERT INTO evaluaciones
-               (id, prototipo_id, jurado_id, template_id,
+               (id, prototipo_id, jurado_id, template_id, client_id,
                 observaciones, acompanamiento_asesor, opinion_personal)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            RETURNING id, prototipo_id, jurado_id, template_id,
                      submitted_at, observaciones, acompanamiento_asesor,
                      opinion_personal, created_at, updated_at"#,
@@ -185,6 +210,7 @@ pub async fn create(
     .bind(req.prototipo_id)
     .bind(user.id)
     .bind(req.template_id)
+    .bind(&req.client_id)
     .bind(&req.observaciones)
     .bind(req.acompanamiento_asesor)
     .bind(req.opinion_personal)
@@ -247,4 +273,64 @@ pub async fn create(
         updated_at: row.9,
     };
     Ok((StatusCode::CREATED, Json(view)))
+}
+
+// ---------------------------------------------------------------------------
+// Read helper (used by idempotent replay + read endpoints in later cycles)
+// ---------------------------------------------------------------------------
+
+async fn load_evaluacion(state: &AppState, id: Uuid) -> ApiResult<EvaluacionView> {
+    let row = sqlx::query_as::<_, (
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+        Option<DateTime<Utc>>,
+        Option<String>,
+        Option<bool>,
+        Option<i32>,
+        DateTime<Utc>,
+        DateTime<Utc>,
+    )>(
+        r#"SELECT id, prototipo_id, jurado_id, template_id,
+                  submitted_at, observaciones, acompanamiento_asesor,
+                  opinion_personal, created_at, updated_at
+           FROM evaluaciones WHERE id = $1"#,
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?
+    .ok_or(ApiError::Core(dems_core::CoreError::NotFound))?;
+
+    let score_rows = sqlx::query_as::<_, (Uuid, Option<i32>, Option<String>)>(
+        r#"SELECT criterion_id, score, text_answer
+           FROM evaluacion_scores WHERE evaluacion_id = $1
+           ORDER BY criterion_id"#,
+    )
+    .bind(id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    Ok(EvaluacionView {
+        id: row.0,
+        prototipo_id: row.1,
+        jurado_id: row.2,
+        template_id: row.3,
+        submitted_at: row.4,
+        observaciones: row.5,
+        acompanamiento_asesor: row.6,
+        opinion_personal: row.7,
+        scores: score_rows
+            .into_iter()
+            .map(|(cid, score, text_answer)| ScoreView {
+                criterion_id: cid,
+                score,
+                text_answer,
+            })
+            .collect(),
+        created_at: row.8,
+        updated_at: row.9,
+    })
 }
