@@ -16,7 +16,7 @@ use crate::extractors::RequireAdmin;
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
-// Types shared by create / get responses
+// Read-side views (shared by create echo, list, get)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -60,6 +60,60 @@ pub struct CreateRubricRequest {
     pub nombre: String,
     pub tipo: RubricType,
     pub descripcion: Option<String>,
+    #[serde(default)]
+    pub categorias: Vec<Uuid>,
+    #[serde(default)]
+    pub sections: Vec<CreateSection>,
+}
+
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct CreateSection {
+    #[validate(length(min = 1, max = 200))]
+    pub nombre: String,
+    pub orden: i32,
+    #[serde(default)]
+    pub peso_pct: Option<f64>,
+    #[serde(default)]
+    pub criteria: Vec<CreateCriterion>,
+}
+
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct CreateCriterion {
+    #[validate(length(min = 1, max = 2000))]
+    pub texto: String,
+    pub orden: i32,
+    #[validate(range(min = 0, max = 100))]
+    pub max_score: i32,
+    pub kind: CriterionKindInput,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CriterionKindInput {
+    Scale,
+    Boolean,
+    TextKey,
+}
+
+impl CriterionKindInput {
+    fn as_sql(self) -> &'static str {
+        match self {
+            Self::Scale => "scale",
+            Self::Boolean => "boolean",
+            Self::TextKey => "text_key",
+        }
+    }
+
+    fn as_api(self) -> &'static str {
+        self.as_sql()
+    }
+}
+
+fn tipo_as_sql(t: RubricType) -> &'static str {
+    match t {
+        RubricType::Exhibicion => "exhibicion",
+        RubricType::Memoria => "memoria",
+    }
 }
 
 pub async fn create(
@@ -69,47 +123,140 @@ pub async fn create(
 ) -> ApiResult<impl IntoResponse> {
     req.validate()
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    for s in &req.sections {
+        s.validate()
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        for c in &s.criteria {
+            c.validate()
+                .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        }
+    }
 
-    let id = Uuid::new_v4();
-    let result = sqlx::query(
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+
+    let template_id = Uuid::new_v4();
+    let insert_template = sqlx::query(
         r#"INSERT INTO rubric_templates
                (id, edition_id, nombre, tipo, descripcion, activo)
            VALUES ($1, $2, $3, $4::rubric_type, $5, true)"#,
     )
-    .bind(id)
+    .bind(template_id)
     .bind(req.edition_id)
     .bind(&req.nombre)
-    .bind(match req.tipo {
-        RubricType::Exhibicion => "exhibicion",
-        RubricType::Memoria => "memoria",
-    })
+    .bind(tipo_as_sql(req.tipo))
     .bind(&req.descripcion)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await;
-
-    match result {
-        Ok(_) => {}
-        Err(sqlx::Error::Database(e)) if e.is_foreign_key_violation() => {
-            // edition_id inexistente — devolvemos 422 para que el cliente
-            // sepa que el payload rompe integridad referencial.
-            return Err(ApiError::Core(dems_core::CoreError::Validation(
-                "edition_id unknown".into(),
-            )));
-        }
-        Err(e) => return Err(ApiError::Internal(e.into())),
+    if let Err(e) = insert_template {
+        return Err(classify_integrity(e, "edition_id unknown"));
     }
 
+    // Categorías.
+    for cat_id in &req.categorias {
+        if let Err(e) = sqlx::query(
+            r#"INSERT INTO rubric_template_categorias (template_id, categoria_id)
+               VALUES ($1, $2)"#,
+        )
+        .bind(template_id)
+        .bind(cat_id)
+        .execute(&mut *tx)
+        .await
+        {
+            return Err(classify_integrity(e, "categoria_id unknown"));
+        }
+    }
+
+    // Secciones + criterios. Mantenemos los IDs generados para eco de
+    // respuesta sin volver a consultar.
+    let mut sections_out: Vec<SectionView> = Vec::with_capacity(req.sections.len());
+    for sec in req.sections {
+        let section_id = Uuid::new_v4();
+        if let Err(e) = sqlx::query(
+            r#"INSERT INTO rubric_sections (id, template_id, nombre, orden, peso_pct)
+               VALUES ($1, $2, $3, $4, $5)"#,
+        )
+        .bind(section_id)
+        .bind(template_id)
+        .bind(&sec.nombre)
+        .bind(sec.orden)
+        .bind(sec.peso_pct)
+        .execute(&mut *tx)
+        .await
+        {
+            return Err(classify_integrity(e, "invalid section"));
+        }
+
+        let mut criteria_out: Vec<CriterionView> = Vec::with_capacity(sec.criteria.len());
+        for crit in sec.criteria {
+            let crit_id = Uuid::new_v4();
+            if let Err(e) = sqlx::query(
+                r#"INSERT INTO rubric_criteria
+                       (id, section_id, texto, orden, max_score, kind)
+                   VALUES ($1, $2, $3, $4, $5, $6::criterion_kind)"#,
+            )
+            .bind(crit_id)
+            .bind(section_id)
+            .bind(&crit.texto)
+            .bind(crit.orden)
+            .bind(crit.max_score)
+            .bind(crit.kind.as_sql())
+            .execute(&mut *tx)
+            .await
+            {
+                return Err(classify_integrity(e, "invalid criterion"));
+            }
+            criteria_out.push(CriterionView {
+                id: crit_id,
+                texto: crit.texto,
+                orden: crit.orden,
+                max_score: crit.max_score,
+                kind: crit.kind.as_api().to_string(),
+            });
+        }
+
+        sections_out.push(SectionView {
+            id: section_id,
+            nombre: sec.nombre,
+            orden: sec.orden,
+            peso_pct: sec.peso_pct,
+            criteria: criteria_out,
+        });
+    }
+
+    tx.commit().await.map_err(|e| ApiError::Internal(e.into()))?;
+
     let view = RubricTemplateView {
-        id,
+        id: template_id,
         edition_id: req.edition_id,
         nombre: req.nombre,
         tipo: req.tipo,
         descripcion: req.descripcion,
         activo: true,
-        categorias: vec![],
-        sections: vec![],
+        categorias: req.categorias,
+        sections: sections_out,
     };
     Ok((StatusCode::CREATED, Json(view)))
+}
+
+/// Map sqlx integrity errors (FK, UNIQUE, CHECK) into 422 validations with
+/// a context-specific message; everything else bubbles as 500.
+fn classify_integrity(e: sqlx::Error, unknown_fk_msg: &str) -> ApiError {
+    match &e {
+        sqlx::Error::Database(db) if db.is_foreign_key_violation() => {
+            ApiError::Core(dems_core::CoreError::Validation(unknown_fk_msg.into()))
+        }
+        sqlx::Error::Database(db) if db.is_unique_violation() => ApiError::Core(
+            dems_core::CoreError::Validation("duplicate orden within parent".into()),
+        ),
+        sqlx::Error::Database(db) if db.is_check_violation() => {
+            ApiError::Core(dems_core::CoreError::Validation("check failed".into()))
+        }
+        _ => ApiError::Internal(e.into()),
+    }
 }
 
 // ---------------------------------------------------------------------------
