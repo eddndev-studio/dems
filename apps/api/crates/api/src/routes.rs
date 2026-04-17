@@ -9,6 +9,7 @@ use crate::state::AppState;
 
 mod admin_rubrics;
 mod auth_routes;
+mod evaluacion_routes;
 mod jurado_routes;
 
 pub fn router(state: AppState) -> Router {
@@ -22,6 +23,7 @@ pub fn router(state: AppState) -> Router {
             "/me/asignaciones",
             get(jurado_routes::list_asignaciones),
         )
+        .route("/evaluaciones", post(evaluacion_routes::create))
         .route(
             "/admin/rubric-templates",
             get(admin_rubrics::list).post(admin_rubrics::create),
