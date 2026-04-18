@@ -16,6 +16,7 @@ import '../../asignaciones/data/asignacion_models.dart';
 import '../application/evaluacion_controller.dart';
 import '../data/evaluacion_models.dart';
 import 'widgets/criterion_card.dart';
+import 'widgets/meta_panel.dart';
 
 class EvaluacionPage extends ConsumerStatefulWidget {
   const EvaluacionPage({
@@ -154,6 +155,15 @@ class _EvaluacionPageState extends ConsumerState<EvaluacionPage> {
                 onText: (cid, v) => ref
                     .read(evaluacionControllerProvider(_key).notifier)
                     .setText(cid, v),
+                onObservaciones: (v) => ref
+                    .read(evaluacionControllerProvider(_key).notifier)
+                    .setObservaciones(v),
+                onOpinion: (v) => ref
+                    .read(evaluacionControllerProvider(_key).notifier)
+                    .setOpinionPersonal(v),
+                onAcompanamiento: (v) => ref
+                    .read(evaluacionControllerProvider(_key).notifier)
+                    .setAcompanamiento(v),
                 onBack: () => context.go('/'),
                 saving: _saving,
                 submitting: _submitting,
@@ -195,6 +205,9 @@ class _Body extends StatelessWidget {
     required this.onNext,
     required this.onScore,
     required this.onText,
+    required this.onObservaciones,
+    required this.onOpinion,
+    required this.onAcompanamiento,
     required this.onBack,
     required this.saving,
     required this.submitting,
@@ -211,6 +224,9 @@ class _Body extends StatelessWidget {
   final VoidCallback? onNext;
   final void Function(String, int) onScore;
   final void Function(String, String) onText;
+  final ValueChanged<String> onObservaciones;
+  final ValueChanged<int?> onOpinion;
+  final ValueChanged<bool?> onAcompanamiento;
   final VoidCallback onBack;
   final bool saving;
   final bool submitting;
@@ -259,6 +275,16 @@ class _Body extends StatelessWidget {
                     _SectionHeader(section: section, index: sectionIndex),
                     const SizedBox(height: 22),
                     ..._criterionCards(section, state),
+                    if (sectionIndex == state.rubric.sections.length - 1)
+                      MetaPanel(
+                        observaciones: state.observaciones,
+                        opinionPersonal: state.opinionPersonal,
+                        acompanamiento: state.acompanamientoAsesor,
+                        onObservacionesChanged: onObservaciones,
+                        onOpinionChanged: onOpinion,
+                        onAcompanamientoChanged: onAcompanamiento,
+                        locked: state.submitted,
+                      ),
                   ],
                 ),
               ),
