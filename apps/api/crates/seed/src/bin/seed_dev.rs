@@ -64,8 +64,7 @@ async fn run(pool: &PgPool) -> anyhow::Result<()> {
     .await?
     .ok_or_else(|| anyhow!("falta rubric_template tipo=memoria"))?;
 
-    let cat_software: Uuid =
-        fetch_categoria(pool, "desarrollo-software").await?;
+    let cat_software: Uuid = fetch_categoria(pool, "desarrollo-software").await?;
     let cat_salud: Uuid = fetch_categoria(pool, "productos-salud").await?;
 
     let jurado_id = upsert_jurado(pool).await?;
@@ -109,13 +108,12 @@ async fn run(pool: &PgPool) -> anyhow::Result<()> {
     }
     // Memoria sólo para los dos de software
     for (folio, ..) in &prototipos[..2] {
-        let prot_id: Uuid = sqlx::query_scalar(
-            "SELECT id FROM prototipos WHERE edition_id = $1 AND folio = $2",
-        )
-        .bind(edition_id)
-        .bind(*folio)
-        .fetch_one(pool)
-        .await?;
+        let prot_id: Uuid =
+            sqlx::query_scalar("SELECT id FROM prototipos WHERE edition_id = $1 AND folio = $2")
+                .bind(edition_id)
+                .bind(*folio)
+                .fetch_one(pool)
+                .await?;
         upsert_assignment(pool, jurado_id, prot_id, tpl_memoria).await?;
     }
 
