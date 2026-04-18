@@ -13,7 +13,7 @@ concurrency:
 jobs:
   api:
     name: api (rust + postgres)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps2]
     defaults:
       run:
         working-directory: apps/api
@@ -72,7 +72,7 @@ jobs:
 
   mobile:
     name: mobile (flutter)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps2]
     defaults:
       run:
         working-directory: apps/mobile
