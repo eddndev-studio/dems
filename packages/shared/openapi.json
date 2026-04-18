@@ -1503,6 +1503,49 @@
           }
         ]
       }
+    },
+    "/me/rubric-templates/{id}": {
+      "get": {
+        "tags": [
+          "jurado"
+        ],
+        "operationId": "get_rubric_template",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID del rubric template",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estructura de la rúbrica",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RubricTemplateView"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Jurado no asignado a ese template"
+          },
+          "404": {
+            "description": "Template no existe"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
     }
   },
   "components": {

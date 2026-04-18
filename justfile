@@ -32,6 +32,11 @@ db-migrate:
 db-seed:
     cd apps/api && cargo run --bin seed
 
+# Fixtures de desarrollo: jurado de prueba + prototipos + asignaciones.
+# Idempotente. Corre después de `just db-seed`.
+seed-dev:
+    cd apps/api && cargo run --bin seed-dev
+
 # --- API ---
 api:
     cd apps/api && cargo run --bin dems-api

@@ -28,6 +28,10 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/refresh", post(auth_routes::refresh))
         .route("/me", get(auth_routes::me))
         .route("/me/asignaciones", get(jurado_routes::list_asignaciones))
+        .route(
+            "/me/rubric-templates/:id",
+            get(jurado_routes::get_rubric_template),
+        )
         .route("/evaluaciones", post(evaluacion_routes::create))
         .route(
             "/evaluaciones/:id",

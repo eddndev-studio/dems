@@ -42,6 +42,7 @@ impl Modify for SecurityAddon {
         auth_routes::me,
         // --- Jurado ---
         jurado_routes::list_asignaciones,
+        jurado_routes::get_rubric_template,
         evaluacion_routes::create,
         evaluacion_routes::get_by_id,
         evaluacion_routes::patch_evaluacion,

@@ -1,7 +1,7 @@
 //! Endpoints scoped to the authenticated caller — primarily for jurados
 //! reading their own assignments and evaluations.
 
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::Json;
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -11,6 +11,7 @@ use dems_core::models::RubricType;
 
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::CurrentUser;
+use crate::routes::admin_rubrics::{self, RubricTemplateView};
 use crate::state::AppState;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -121,4 +122,44 @@ pub async fn list_asignaciones(
         .collect();
 
     Ok(Json(items))
+}
+
+// ---------------------------------------------------------------------------
+// GET /me/rubric-templates/:id
+// ---------------------------------------------------------------------------
+
+#[utoipa::path(
+    get,
+    path = "/me/rubric-templates/{id}",
+    tag = "jurado",
+    params(("id" = Uuid, Path, description = "ID del rubric template")),
+    responses(
+        (status = 200, description = "Estructura de la rúbrica", body = RubricTemplateView),
+        (status = 403, description = "Jurado no asignado a ese template"),
+        (status = 404, description = "Template no existe"),
+    ),
+    security(("bearer_auth" = [])),
+)]
+pub async fn get_rubric_template(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<RubricTemplateView>> {
+    let assigned: bool = sqlx::query_scalar(
+        r#"SELECT EXISTS (
+               SELECT 1 FROM assignments
+               WHERE jurado_id = $1 AND template_id = $2
+           )"#,
+    )
+    .bind(user.id)
+    .bind(id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    if !assigned {
+        return Err(ApiError::Core(dems_core::CoreError::Forbidden));
+    }
+
+    admin_rubrics::load_tree(&state, id).await.map(Json)
 }

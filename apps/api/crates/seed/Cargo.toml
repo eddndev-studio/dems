@@ -8,6 +8,10 @@ license.workspace = true
 name = "seed"
 path = "src/main.rs"
 
+[[bin]]
+name = "seed-dev"
+path = "src/bin/seed_dev.rs"
+
 [dependencies]
 dems-core = { workspace = true }
 tokio = { workspace = true }

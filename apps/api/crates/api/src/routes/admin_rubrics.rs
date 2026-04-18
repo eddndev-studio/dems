@@ -372,7 +372,7 @@ pub async fn get_by_id(
     load_tree(&state, id).await.map(Json)
 }
 
-async fn load_tree(state: &AppState, id: Uuid) -> ApiResult<RubricTemplateView> {
+pub(crate) async fn load_tree(state: &AppState, id: Uuid) -> ApiResult<RubricTemplateView> {
     // 1. Template metadata.
     let template = sqlx::query_as::<_, (Uuid, Uuid, String, RubricType, Option<String>, bool)>(
         r#"SELECT id, edition_id, nombre, tipo, descripcion, activo
