@@ -13,6 +13,11 @@ set(APPLICATION_ID "mx.ipn.dems.dems_mobile")
 # versions of CMake.
 cmake_policy(SET CMP0063 NEW)
 
+# GCC 15 / Clang 20+ promote `-Wdeprecated-literal-operator` to error, which
+# breaks plugins that vendor older nlohmann/json.hpp (e.g. flutter_secure_storage_linux).
+# Disable it globally so plugin subdirectories inherit the relaxation.
+add_compile_options(-Wno-error=deprecated-literal-operator)
+
 # Load bundled libraries from the lib/ directory relative to the binary.
 set(CMAKE_INSTALL_RPATH "$ORIGIN/lib")
 
