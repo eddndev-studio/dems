@@ -8,7 +8,7 @@ import '../features/admin/sections/admin_editions_page.dart';
 import '../features/admin/sections/admin_prototipos_page.dart';
 import '../features/admin/sections/admin_results_page.dart';
 import '../features/admin/sections/admin_rubrics_page.dart';
-import '../features/admin/sections/admin_users_page.dart';
+import '../features/admin/users/presentation/admin_users_page.dart';
 import '../features/auth/application/auth_controller.dart';
 import '../features/auth/data/auth_models.dart';
 import '../features/auth/login_page.dart';
