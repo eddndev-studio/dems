@@ -4,8 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../features/admin/admin_shell.dart';
 import '../features/admin/editions/presentation/admin_editions_page.dart';
+import '../features/admin/assignments/presentation/admin_assignments_page.dart';
 import '../features/admin/prototipos/presentation/admin_prototipos_page.dart';
-import '../features/admin/sections/admin_assignments_page.dart';
 import '../features/admin/sections/admin_results_page.dart';
 import '../features/admin/sections/admin_rubrics_page.dart';
 import '../features/admin/users/presentation/admin_users_page.dart';
