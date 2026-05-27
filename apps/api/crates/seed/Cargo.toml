@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lib]
+name = "dems_seed"
+path = "src/lib.rs"
+
 [[bin]]
 name = "seed"
 path = "src/main.rs"

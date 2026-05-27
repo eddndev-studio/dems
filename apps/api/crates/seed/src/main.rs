@@ -2,8 +2,7 @@
 //! 2024 Exhibición + 2021 Memoria Técnica rubric templates.
 
 use anyhow::Context;
-
-mod rubrics;
+use dems_seed::rubrics;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

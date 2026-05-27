@@ -20,6 +20,7 @@ path = "src/bin/openapi_export.rs"
 axum-test = "17"
 http-body-util = "0.1"
 tower = { workspace = true, features = ["util"] }
+dems-seed = { workspace = true }
 
 [dependencies]
 dems-core = { workspace = true }

@@ -53,3 +53,4 @@ utoipa-swagger-ui = { version = "8", features = ["axum"] }
 
 # internal
 dems-core = { path = "crates/core" }
+dems-seed = { path = "crates/seed" }

@@ -514,6 +514,7 @@ dependencies = [
  "axum-test",
  "chrono",
  "dems-core",
+ "dems-seed",
  "dotenvy",
  "http-body-util",
  "jsonwebtoken",
