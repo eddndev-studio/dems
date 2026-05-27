@@ -118,6 +118,34 @@
         ]
       }
     },
+    "/admin/categorias": {
+      "get": {
+        "tags": [
+          "admin/categorias"
+        ],
+        "operationId": "list",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CategoriaView"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/admin/editions": {
       "get": {
         "tags": [
@@ -1673,6 +1701,31 @@
             }
           },
           "rubric_type": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoriaView": {
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "nombre",
+          "orden"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "orden": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "slug": {
             "type": "string"
           }
         }

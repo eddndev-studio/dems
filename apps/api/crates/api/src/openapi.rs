@@ -7,8 +7,8 @@ use utoipa::openapi::security::{Http, HttpAuthScheme, SecurityScheme};
 use utoipa::{Modify, OpenApi};
 
 use crate::routes::{
-    admin_assignments, admin_editions, admin_prototipos, admin_results, admin_rubrics, admin_users,
-    auth_routes, evaluacion_routes, jurado_routes,
+    admin_assignments, admin_categorias, admin_editions, admin_prototipos, admin_results,
+    admin_rubrics, admin_users, auth_routes, evaluacion_routes, jurado_routes,
 };
 
 /// Bearer JWT como esquema global. Los handlers que requieren autenticación
@@ -54,6 +54,8 @@ impl Modify for SecurityAddon {
         admin_users::patch,
         admin_users::delete,
         admin_users::reset_password,
+        // --- Admin: categorias ---
+        admin_categorias::list,
         // --- Admin: editions ---
         admin_editions::list,
         admin_editions::create,

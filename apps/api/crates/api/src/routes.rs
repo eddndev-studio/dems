@@ -11,6 +11,7 @@ use crate::openapi::ApiDoc;
 use crate::state::AppState;
 
 pub mod admin_assignments;
+pub mod admin_categorias;
 pub mod admin_editions;
 pub mod admin_prototipos;
 pub mod admin_results;
@@ -52,6 +53,7 @@ pub fn router(state: AppState) -> Router {
             "/admin/users/:id/password",
             axum::routing::put(admin_users::reset_password),
         )
+        .route("/admin/categorias", get(admin_categorias::list))
         .route(
             "/admin/editions",
             get(admin_editions::list).post(admin_editions::create),
