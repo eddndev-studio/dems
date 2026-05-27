@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/admin/admin_shell.dart';
+import '../features/admin/editions/presentation/admin_editions_page.dart';
 import '../features/admin/sections/admin_assignments_page.dart';
-import '../features/admin/sections/admin_editions_page.dart';
 import '../features/admin/sections/admin_prototipos_page.dart';
 import '../features/admin/sections/admin_results_page.dart';
 import '../features/admin/sections/admin_rubrics_page.dart';
