@@ -332,6 +332,62 @@
         ]
       }
     },
+    "/admin/editions/{id}/phase": {
+      "post": {
+        "tags": [
+          "admin/editions"
+        ],
+        "operationId": "set_phase",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPhaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditionView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Reabrir bloqueado: la edición ya tiene evaluaciones"
+          },
+          "422": {
+            "description": "Transición de fase no adyacente"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/admin/evaluaciones/{id}/reopen": {
       "post": {
         "tags": [
@@ -943,6 +999,62 @@
           },
           "404": {
             "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/rubric-templates/{id}/structure": {
+      "put": {
+        "tags": [
+          "admin/rubrics"
+        ],
+        "operationId": "replace_structure",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceStructureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RubricTemplateView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Edición fuera de preparación — estructura congelada"
+          },
+          "422": {
+            "description": "Validación falló"
           }
         },
         "security": [
@@ -2022,6 +2134,15 @@
           }
         }
       },
+      "EditionPhase": {
+        "type": "string",
+        "description": "Fase del flujo de una edición. La estructura de rúbricas solo es editable\nen `Preparacion`; al pasar a `Evaluacion` se congela.",
+        "enum": [
+          "preparacion",
+          "evaluacion",
+          "cerrada"
+        ]
+      },
       "EditionView": {
         "type": "object",
         "required": [
@@ -2029,6 +2150,7 @@
           "year",
           "name",
           "active",
+          "phase",
           "created_at"
         ],
         "properties": {
@@ -2045,6 +2167,9 @@
           },
           "name": {
             "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/EditionPhase"
           },
           "year": {
             "type": "integer",
@@ -2543,6 +2668,24 @@
           }
         }
       },
+      "ReplaceStructureRequest": {
+        "type": "object",
+        "properties": {
+          "categorias": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateSection"
+            }
+          }
+        }
+      },
       "ResetPasswordRequest": {
         "type": "object",
         "required": [
@@ -2582,6 +2725,7 @@
           "nombre",
           "tipo",
           "activo",
+          "editable",
           "section_count",
           "criterion_count"
         ],
@@ -2598,6 +2742,10 @@
               "string",
               "null"
             ]
+          },
+          "editable": {
+            "type": "boolean",
+            "description": "`true` si la edición está en fase `preparacion` (estructura editable)."
           },
           "edition_id": {
             "type": "string",
@@ -2627,6 +2775,7 @@
           "nombre",
           "tipo",
           "activo",
+          "editable",
           "categorias",
           "sections"
         ],
@@ -2646,6 +2795,10 @@
               "string",
               "null"
             ]
+          },
+          "editable": {
+            "type": "boolean",
+            "description": "`true` si la edición está en fase `preparacion`: la estructura puede\neditarse. `false` cuando la edición ya entró en evaluación/cerrada."
           },
           "edition_id": {
             "type": "string",
@@ -2758,6 +2911,17 @@
               "null"
             ],
             "format": "double"
+          }
+        }
+      },
+      "SetPhaseRequest": {
+        "type": "object",
+        "required": [
+          "phase"
+        ],
+        "properties": {
+          "phase": {
+            "$ref": "#/components/schemas/EditionPhase"
           }
         }
       },

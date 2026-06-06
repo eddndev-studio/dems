@@ -10,7 +10,7 @@ use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use common::{admin, build_app, insert_user, jurado, seed_edition};
+use common::{admin, build_app, insert_user, jurado, seed_edition, set_edition_phase};
 
 async fn post_create(pool: PgPool, tok: &str, body: Value) -> Value {
     let app = build_app(pool);
@@ -125,6 +125,25 @@ async fn delete_returns_409_when_evaluaciones_exist(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(still, 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn delete_blocked_when_edition_not_in_preparacion(pool: PgPool) {
+    let (_, tok) = admin(&pool).await;
+    let edition_id = seed_edition(&pool, 2024).await;
+    let created = post_create(
+        pool.clone(),
+        &tok,
+        json!({ "edition_id": edition_id, "nombre": "R", "tipo": "exhibicion" }),
+    )
+    .await;
+    let id = created["id"].as_str().unwrap().to_string();
+
+    // Aunque no tenga evaluaciones, la edición congelada impide borrar.
+    set_edition_phase(&pool, edition_id, "evaluacion").await;
+
+    let status = delete(pool, &id, Some(&tok)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
 }
 
 #[sqlx::test(migrations = "../../migrations")]

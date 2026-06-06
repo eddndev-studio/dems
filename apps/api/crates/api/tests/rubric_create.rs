@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use tower::ServiceExt;
 
-use common::{admin, build_app, jurado, seed_edition};
+use common::{admin, build_app, jurado, seed_edition, set_edition_phase};
 
 async fn post_create(pool: PgPool, bearer: Option<&str>, body: Value) -> (StatusCode, Value) {
     let app = build_app(pool);
@@ -132,6 +132,23 @@ async fn create_is_403_for_jurado(pool: PgPool) {
     .await;
 
     assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn create_blocked_when_edition_in_evaluacion(pool: PgPool) {
+    let (_, tok) = admin(&pool).await;
+    let edition_id = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, edition_id, "evaluacion").await;
+
+    let (status, _) = post_create(
+        pool,
+        Some(&tok),
+        json!({ "edition_id": edition_id, "nombre": "x", "tipo": "exhibicion" }),
+    )
+    .await;
+
+    // La edición ya no está en preparación: no se pueden crear rúbricas.
+    assert_eq!(status, StatusCode::CONFLICT);
 }
 
 #[sqlx::test(migrations = "../../migrations")]

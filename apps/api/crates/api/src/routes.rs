@@ -64,6 +64,7 @@ pub fn router(state: AppState) -> Router {
                 .patch(admin_editions::patch)
                 .delete(admin_editions::delete),
         )
+        .route("/admin/editions/:id/phase", post(admin_editions::set_phase))
         .route(
             "/admin/prototipos",
             get(admin_prototipos::list).post(admin_prototipos::create),
@@ -91,6 +92,10 @@ pub fn router(state: AppState) -> Router {
             get(admin_rubrics::get_by_id)
                 .patch(admin_rubrics::patch)
                 .delete(admin_rubrics::delete_rubric),
+        )
+        .route(
+            "/admin/rubric-templates/:id/structure",
+            axum::routing::put(admin_rubrics::replace_structure),
         )
         .route(
             "/admin/results/categoria/:slug",

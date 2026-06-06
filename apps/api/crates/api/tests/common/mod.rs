@@ -85,6 +85,16 @@ pub async fn seed_edition(pool: &PgPool, year: i32) -> Uuid {
     id
 }
 
+/// Force an edition into a given phase ('preparacion' | 'evaluacion' | 'cerrada').
+pub async fn set_edition_phase(pool: &PgPool, edition_id: Uuid, phase: &str) {
+    sqlx::query("UPDATE editions SET phase = $2::edition_phase WHERE id = $1")
+        .bind(edition_id)
+        .bind(phase)
+        .execute(pool)
+        .await
+        .expect("set edition phase");
+}
+
 /// Insert a prototipo and return its id.
 pub async fn insert_prototipo(pool: &PgPool, edition_id: Uuid, folio: &str, nombre: &str) -> Uuid {
     let id = Uuid::new_v4();

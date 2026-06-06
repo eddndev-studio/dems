@@ -9,7 +9,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-use dems_core::models::RubricType;
+use dems_core::models::{EditionPhase, RubricType};
 
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::RequireAdmin;
@@ -27,6 +27,9 @@ pub struct RubricTemplateView {
     pub tipo: RubricType,
     pub descripcion: Option<String>,
     pub activo: bool,
+    /// `true` si la edición está en fase `preparacion`: la estructura puede
+    /// editarse. `false` cuando la edición ya entró en evaluación/cerrada.
+    pub editable: bool,
     pub categorias: Vec<Uuid>,
     pub sections: Vec<SectionView>,
 }
@@ -103,10 +106,6 @@ impl CriterionKindInput {
             Self::TextKey => "text_key",
         }
     }
-
-    fn as_api(self) -> &'static str {
-        self.as_sql()
-    }
 }
 
 fn tipo_as_sql(t: RubricType) -> &'static str {
@@ -134,12 +133,16 @@ pub async fn create(
 ) -> ApiResult<impl IntoResponse> {
     req.validate()
         .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
-    for s in &req.sections {
-        s.validate()
-            .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
-        for c in &s.criteria {
-            c.validate()
-                .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
+    validate_sections(&req.sections)?;
+
+    // Gating: solo se crean rúbricas mientras la edición esté en preparación.
+    // Si la edición no existe, dejamos caer al INSERT (falla por FK → 422),
+    // preservando el contrato de "edición desconocida".
+    if let Some(phase) = phase_of_edition(&state, req.edition_id).await? {
+        if phase != EditionPhase::Preparacion {
+            return Err(ApiError::Core(dems_core::CoreError::Conflict(
+                "edition not in preparacion; rubric creation frozen".into(),
+            )));
         }
     }
 
@@ -150,7 +153,7 @@ pub async fn create(
         .map_err(|e| ApiError::Internal(e.into()))?;
 
     let template_id = Uuid::new_v4();
-    let insert_template = sqlx::query(
+    sqlx::query(
         r#"INSERT INTO rubric_templates
                (id, edition_id, nombre, tipo, descripcion, activo)
            VALUES ($1, $2, $3, $4::rubric_type, $5, true)"#,
@@ -161,32 +164,71 @@ pub async fn create(
     .bind(tipo_as_sql(req.tipo))
     .bind(&req.descripcion)
     .execute(&mut *tx)
-    .await;
-    if let Err(e) = insert_template {
-        return Err(classify_integrity(e, "edition_id unknown"));
-    }
+    .await
+    .map_err(|e| classify_integrity(e, "edition_id unknown"))?;
 
-    // Categorías.
-    for cat_id in &req.categorias {
-        if let Err(e) = sqlx::query(
+    insert_categorias(&mut tx, template_id, &req.categorias).await?;
+    insert_sections(&mut tx, template_id, &req.sections).await?;
+
+    tx.commit()
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+
+    let view = load_tree(&state, template_id).await?;
+    Ok((StatusCode::CREATED, Json(view)))
+}
+
+/// Valida cada sección y criterio del árbol con `validator`.
+fn validate_sections(sections: &[CreateSection]) -> ApiResult<()> {
+    for s in sections {
+        s.validate()
+            .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
+        for c in &s.criteria {
+            c.validate()
+                .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
+        }
+    }
+    Ok(())
+}
+
+/// Fase actual de una edición, o `None` si no existe.
+async fn phase_of_edition(state: &AppState, edition_id: Uuid) -> ApiResult<Option<EditionPhase>> {
+    sqlx::query_scalar("SELECT phase FROM editions WHERE id = $1")
+        .bind(edition_id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))
+}
+
+/// Inserta los vínculos rúbrica ↔ categoría dentro de la transacción.
+async fn insert_categorias(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    template_id: Uuid,
+    categorias: &[Uuid],
+) -> ApiResult<()> {
+    for cat_id in categorias {
+        sqlx::query(
             r#"INSERT INTO rubric_template_categorias (template_id, categoria_id)
                VALUES ($1, $2)"#,
         )
         .bind(template_id)
         .bind(cat_id)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await
-        {
-            return Err(classify_integrity(e, "categoria_id unknown"));
-        }
+        .map_err(|e| classify_integrity(e, "categoria_id unknown"))?;
     }
+    Ok(())
+}
 
-    // Secciones + criterios. Mantenemos los IDs generados para eco de
-    // respuesta sin volver a consultar.
-    let mut sections_out: Vec<SectionView> = Vec::with_capacity(req.sections.len());
-    for sec in req.sections {
+/// Inserta secciones + criterios anidados dentro de la transacción.
+async fn insert_sections(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    template_id: Uuid,
+    sections: &[CreateSection],
+) -> ApiResult<()> {
+    for sec in sections {
         let section_id = Uuid::new_v4();
-        if let Err(e) = sqlx::query(
+        sqlx::query(
             r#"INSERT INTO rubric_sections (id, template_id, nombre, orden, peso_pct)
                VALUES ($1, $2, $3, $4, $5)"#,
         )
@@ -195,64 +237,28 @@ pub async fn create(
         .bind(&sec.nombre)
         .bind(sec.orden)
         .bind(sec.peso_pct)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await
-        {
-            return Err(classify_integrity(e, "invalid section"));
-        }
+        .map_err(|e| classify_integrity(e, "invalid section"))?;
 
-        let mut criteria_out: Vec<CriterionView> = Vec::with_capacity(sec.criteria.len());
-        for crit in sec.criteria {
-            let crit_id = Uuid::new_v4();
-            if let Err(e) = sqlx::query(
+        for crit in &sec.criteria {
+            sqlx::query(
                 r#"INSERT INTO rubric_criteria
                        (id, section_id, texto, orden, max_score, kind)
                    VALUES ($1, $2, $3, $4, $5, $6::criterion_kind)"#,
             )
-            .bind(crit_id)
+            .bind(Uuid::new_v4())
             .bind(section_id)
             .bind(&crit.texto)
             .bind(crit.orden)
             .bind(crit.max_score)
             .bind(crit.kind.as_sql())
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await
-            {
-                return Err(classify_integrity(e, "invalid criterion"));
-            }
-            criteria_out.push(CriterionView {
-                id: crit_id,
-                texto: crit.texto,
-                orden: crit.orden,
-                max_score: crit.max_score,
-                kind: crit.kind.as_api().to_string(),
-            });
+            .map_err(|e| classify_integrity(e, "invalid criterion"))?;
         }
-
-        sections_out.push(SectionView {
-            id: section_id,
-            nombre: sec.nombre,
-            orden: sec.orden,
-            peso_pct: sec.peso_pct,
-            criteria: criteria_out,
-        });
     }
-
-    tx.commit()
-        .await
-        .map_err(|e| ApiError::Internal(e.into()))?;
-
-    let view = RubricTemplateView {
-        id: template_id,
-        edition_id: req.edition_id,
-        nombre: req.nombre,
-        tipo: req.tipo,
-        descripcion: req.descripcion,
-        activo: true,
-        categorias: req.categorias,
-        sections: sections_out,
-    };
-    Ok((StatusCode::CREATED, Json(view)))
+    Ok(())
 }
 
 /// Map sqlx integrity errors (FK, UNIQUE, CHECK) into 422 validations with
@@ -295,6 +301,8 @@ pub struct RubricTemplateSummary {
     pub tipo: RubricType,
     pub descripcion: Option<String>,
     pub activo: bool,
+    /// `true` si la edición está en fase `preparacion` (estructura editable).
+    pub editable: bool,
     pub section_count: i64,
     pub criterion_count: i64,
 }
@@ -325,11 +333,13 @@ pub async fn list(
             t.tipo,
             t.descripcion,
             t.activo,
+            (e.phase = 'preparacion') AS editable,
             (SELECT COUNT(*) FROM rubric_sections s WHERE s.template_id = t.id) AS section_count,
             (SELECT COUNT(*) FROM rubric_criteria c
                JOIN rubric_sections s ON s.id = c.section_id
                WHERE s.template_id = t.id) AS criterion_count
         FROM rubric_templates t
+        JOIN editions e ON e.id = t.edition_id
         WHERE ($1::uuid IS NULL OR t.edition_id = $1)
           AND ($2::rubric_type IS NULL OR t.tipo = $2)
           AND ($3::boolean IS NULL OR t.activo = $3)
@@ -373,10 +383,23 @@ pub async fn get_by_id(
 }
 
 pub(crate) async fn load_tree(state: &AppState, id: Uuid) -> ApiResult<RubricTemplateView> {
-    // 1. Template metadata.
-    let template = sqlx::query_as::<_, (Uuid, Uuid, String, RubricType, Option<String>, bool)>(
-        r#"SELECT id, edition_id, nombre, tipo, descripcion, activo
-           FROM rubric_templates WHERE id = $1"#,
+    // 1. Template metadata + fase de la edición (para `editable`).
+    let template = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            String,
+            RubricType,
+            Option<String>,
+            bool,
+            EditionPhase,
+        ),
+    >(
+        r#"SELECT t.id, t.edition_id, t.nombre, t.tipo, t.descripcion, t.activo, e.phase
+               FROM rubric_templates t
+               JOIN editions e ON e.id = t.edition_id
+               WHERE t.id = $1"#,
     )
     .bind(id)
     .fetch_optional(&state.pool)
@@ -446,7 +469,7 @@ pub(crate) async fn load_tree(state: &AppState, id: Uuid) -> ApiResult<RubricTem
         })
         .collect();
 
-    let (tid, edition_id, nombre, tipo, descripcion, activo) = template;
+    let (tid, edition_id, nombre, tipo, descripcion, activo, phase) = template;
     Ok(RubricTemplateView {
         id: tid,
         edition_id,
@@ -454,6 +477,7 @@ pub(crate) async fn load_tree(state: &AppState, id: Uuid) -> ApiResult<RubricTem
         tipo,
         descripcion,
         activo,
+        editable: phase == EditionPhase::Preparacion,
         categorias,
         sections,
     })
@@ -519,6 +543,105 @@ pub async fn patch(
 }
 
 // ---------------------------------------------------------------------------
+// Replace structure (full-tree replace; gated on edition phase = preparacion)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ReplaceStructureRequest {
+    #[serde(default)]
+    pub categorias: Vec<Uuid>,
+    #[serde(default)]
+    pub sections: Vec<CreateSection>,
+}
+
+/// Fase de la edición a la que pertenece una rúbrica, o `None` si no existe.
+async fn phase_of_template(state: &AppState, template_id: Uuid) -> ApiResult<Option<EditionPhase>> {
+    sqlx::query_scalar(
+        r#"SELECT e.phase FROM rubric_templates t
+           JOIN editions e ON e.id = t.edition_id
+           WHERE t.id = $1"#,
+    )
+    .bind(template_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))
+}
+
+/// Mapea una violación de FK al borrar criterios (RESTRICT por puntajes) a 409;
+/// cualquier otro error de DB es 500. Es el backstop duro de integridad.
+fn restrict_to_conflict(e: sqlx::Error) -> ApiError {
+    match &e {
+        sqlx::Error::Database(db) if db.is_foreign_key_violation() => ApiError::Core(
+            dems_core::CoreError::Conflict("rubric has evaluations; structure is frozen".into()),
+        ),
+        _ => ApiError::Internal(e.into()),
+    }
+}
+
+#[utoipa::path(
+    put,
+    path = "/admin/rubric-templates/{id}/structure",
+    tag = "admin/rubrics",
+    params(("id" = Uuid, Path, description = "ID")),
+    request_body = ReplaceStructureRequest,
+    responses(
+        (status = 200, body = RubricTemplateView),
+        (status = 404),
+        (status = 409, description = "Edición fuera de preparación — estructura congelada"),
+        (status = 422, description = "Validación falló"),
+    ),
+    security(("bearer_auth" = [])),
+)]
+pub async fn replace_structure(
+    State(state): State<AppState>,
+    _: RequireAdmin,
+    Path(id): Path<Uuid>,
+    Json(req): Json<ReplaceStructureRequest>,
+) -> ApiResult<Json<RubricTemplateView>> {
+    validate_sections(&req.sections)?;
+
+    let phase = phase_of_template(&state, id)
+        .await?
+        .ok_or(ApiError::Core(dems_core::CoreError::NotFound))?;
+    if phase != EditionPhase::Preparacion {
+        return Err(ApiError::Core(dems_core::CoreError::Conflict(
+            "edition not in preparacion; rubric structure frozen".into(),
+        )));
+    }
+
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+
+    // Reemplazo total: se borran categorías + secciones (cascada a criterios) y
+    // se reinsertan. En preparación ningún puntaje referencia estos criterios;
+    // si por alguna razón lo hiciera, el ON DELETE RESTRICT de evaluacion_scores
+    // dispara y lo convertimos en 409.
+    sqlx::query("DELETE FROM rubric_template_categorias WHERE template_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+
+    sqlx::query("DELETE FROM rubric_sections WHERE template_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(restrict_to_conflict)?;
+
+    insert_categorias(&mut tx, id, &req.categorias).await?;
+    insert_sections(&mut tx, id, &req.sections).await?;
+
+    tx.commit()
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+
+    load_tree(&state, id).await.map(Json)
+}
+
+// ---------------------------------------------------------------------------
 // Delete
 // ---------------------------------------------------------------------------
 
@@ -539,6 +662,17 @@ pub async fn delete_rubric(
     _: RequireAdmin,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
+    // La edición debe estar en preparación: una vez en evaluación, el set de
+    // rúbricas queda congelado (existencia incluida). 404 si no existe.
+    let phase = phase_of_template(&state, id)
+        .await?
+        .ok_or(ApiError::Core(dems_core::CoreError::NotFound))?;
+    if phase != EditionPhase::Preparacion {
+        return Err(ApiError::Core(dems_core::CoreError::Conflict(
+            "edition not in preparacion; cannot delete rubric".into(),
+        )));
+    }
+
     // Si existe alguna evaluación que referencia esta rúbrica, preservamos
     // la auditoría: borrar rompería el historial de puntajes. El admin
     // puede archivar con PATCH { activo: false } en su lugar.

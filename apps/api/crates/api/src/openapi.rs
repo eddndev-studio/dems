@@ -62,6 +62,7 @@ impl Modify for SecurityAddon {
         admin_editions::get_by_id,
         admin_editions::patch,
         admin_editions::delete,
+        admin_editions::set_phase,
         // --- Admin: prototipos ---
         admin_prototipos::list,
         admin_prototipos::create,
@@ -77,6 +78,7 @@ impl Modify for SecurityAddon {
         admin_rubrics::create,
         admin_rubrics::get_by_id,
         admin_rubrics::patch,
+        admin_rubrics::replace_structure,
         admin_rubrics::delete_rubric,
         // --- Admin: results & ops ---
         admin_results::by_categoria,

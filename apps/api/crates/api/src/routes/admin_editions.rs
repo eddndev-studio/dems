@@ -10,6 +10,8 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
+use dems_core::models::EditionPhase;
+
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::RequireAdmin;
 use crate::state::AppState;
@@ -20,6 +22,7 @@ pub struct EditionView {
     pub year: i32,
     pub name: String,
     pub active: bool,
+    pub phase: EditionPhase,
     pub created_at: DateTime<Utc>,
 }
 
@@ -83,7 +86,7 @@ pub async fn create(
     let view = sqlx::query_as::<_, EditionView>(
         r#"INSERT INTO editions (id, year, name, active)
            VALUES ($1, $2, $3, $4)
-           RETURNING id, year, name, active, created_at"#,
+           RETURNING id, year, name, active, phase, created_at"#,
     )
     .bind(id)
     .bind(req.year)
@@ -124,7 +127,7 @@ pub async fn list(
     _: RequireAdmin,
 ) -> ApiResult<Json<Vec<EditionView>>> {
     let rows = sqlx::query_as::<_, EditionView>(
-        r#"SELECT id, year, name, active, created_at
+        r#"SELECT id, year, name, active, phase, created_at
            FROM editions ORDER BY year DESC"#,
     )
     .fetch_all(&state.pool)
@@ -154,7 +157,7 @@ pub async fn get_by_id(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<EditionView>> {
     let row = sqlx::query_as::<_, EditionView>(
-        r#"SELECT id, year, name, active, created_at
+        r#"SELECT id, year, name, active, phase, created_at
            FROM editions WHERE id = $1"#,
     )
     .bind(id)
@@ -221,7 +224,7 @@ pub async fn patch(
            SET name = COALESCE($2, name),
                active = COALESCE($3, active)
            WHERE id = $1
-           RETURNING id, year, name, active, created_at"#,
+           RETURNING id, year, name, active, phase, created_at"#,
     )
     .bind(id)
     .bind(&req.name)
@@ -287,4 +290,94 @@ pub async fn delete(
         return Err(ApiError::Core(dems_core::CoreError::NotFound));
     }
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------------------
+// Phase transition (preparacion ↔ evaluacion ↔ cerrada)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetPhaseRequest {
+    pub phase: EditionPhase,
+}
+
+#[utoipa::path(
+    post,
+    path = "/admin/editions/{id}/phase",
+    tag = "admin/editions",
+    params(("id" = Uuid, Path, description = "ID")),
+    request_body = SetPhaseRequest,
+    responses(
+        (status = 200, body = EditionView),
+        (status = 404),
+        (status = 409, description = "Reabrir bloqueado: la edición ya tiene evaluaciones"),
+        (status = 422, description = "Transición de fase no adyacente"),
+    ),
+    security(("bearer_auth" = [])),
+)]
+pub async fn set_phase(
+    State(state): State<AppState>,
+    _: RequireAdmin,
+    Path(id): Path<Uuid>,
+    Json(req): Json<SetPhaseRequest>,
+) -> ApiResult<Json<EditionView>> {
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+
+    let current: EditionPhase = sqlx::query_scalar("SELECT phase FROM editions WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?
+        .ok_or(ApiError::Core(dems_core::CoreError::NotFound))?;
+
+    // Cambiar de fase solo entre vecinas; misma fase es un no-op idempotente.
+    if current != req.phase {
+        if !current.is_adjacent(req.phase) {
+            return Err(ApiError::Core(dems_core::CoreError::Validation(
+                "invalid phase transition".into(),
+            )));
+        }
+
+        // Reabrir (evaluacion → preparacion) se bloquea si ya hay evaluaciones
+        // que referencian rúbricas de esta edición: descongelar corrompería los
+        // puntajes capturados.
+        if current == EditionPhase::Evaluacion && req.phase == EditionPhase::Preparacion {
+            let has_evals: bool = sqlx::query_scalar(
+                r#"SELECT EXISTS (
+                       SELECT 1 FROM evaluaciones e
+                       JOIN rubric_templates t ON t.id = e.template_id
+                       WHERE t.edition_id = $1
+                   )"#,
+            )
+            .bind(id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+            if has_evals {
+                return Err(ApiError::Core(dems_core::CoreError::Conflict(
+                    "edition has evaluaciones; cannot reopen to preparacion".into(),
+                )));
+            }
+        }
+    }
+
+    let view = sqlx::query_as::<_, EditionView>(
+        r#"UPDATE editions SET phase = $2::edition_phase
+           WHERE id = $1
+           RETURNING id, year, name, active, phase, created_at"#,
+    )
+    .bind(id)
+    .bind(req.phase)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    tx.commit()
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+    Ok(Json(view))
 }

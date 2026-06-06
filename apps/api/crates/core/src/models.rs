@@ -20,6 +20,32 @@ pub enum RubricType {
     Memoria,
 }
 
+/// Fase del flujo de una edición. La estructura de rúbricas solo es editable
+/// en `Preparacion`; al pasar a `Evaluacion` se congela.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, ToSchema)]
+#[sqlx(type_name = "edition_phase", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum EditionPhase {
+    Preparacion,
+    Evaluacion,
+    Cerrada,
+}
+
+impl EditionPhase {
+    /// `true` si `other` es alcanzable en un solo paso desde `self`
+    /// (adyacencia preparacion ↔ evaluacion ↔ cerrada).
+    pub fn is_adjacent(self, other: EditionPhase) -> bool {
+        use EditionPhase::*;
+        matches!(
+            (self, other),
+            (Preparacion, Evaluacion)
+                | (Evaluacion, Preparacion)
+                | (Evaluacion, Cerrada)
+                | (Cerrada, Evaluacion)
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, ToSchema)]
 #[sqlx(type_name = "criterion_kind", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
