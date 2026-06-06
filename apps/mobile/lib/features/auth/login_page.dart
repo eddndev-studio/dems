@@ -481,19 +481,28 @@ class _LoginCard extends StatelessWidget {
               },
             ),
             const SizedBox(height: 22),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                TextButton(
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final forgot = TextButton(
                   onPressed: busy ? null : () {},
                   child: const Text('¿Olvidaste la contraseña?'),
-                ),
-                PrimaryCta(
+                );
+                final cta = PrimaryCta(
                   label: busy ? 'Entrando…' : 'Entrar',
                   busy: busy,
                   onPressed: busy ? null : onSubmit,
-                ),
-              ],
+                );
+                if (constraints.maxWidth < 360) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [cta, const SizedBox(height: 4), forgot],
+                  );
+                }
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [forgot, cta],
+                );
+              },
             ),
             const SizedBox(height: 10),
             Divider(color: AppColors.hairline, height: 32),
