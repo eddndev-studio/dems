@@ -27,15 +27,7 @@ class AdminEditionsController extends AsyncNotifier<List<Edition>> {
     final current = state.asData?.value ?? const <Edition>[];
     // When the new edition is active, every other edition is now inactive.
     final withFlip = active
-        ? current
-            .map((e) => Edition(
-                  id: e.id,
-                  year: e.year,
-                  name: e.name,
-                  active: false,
-                  createdAt: e.createdAt,
-                ))
-            .toList()
+        ? current.map((e) => e.copyWith(active: false)).toList()
         : List<Edition>.from(current);
     final next = [created, ...withFlip]..sort((a, b) => b.year.compareTo(a.year));
     state = AsyncData(next);
@@ -58,13 +50,7 @@ class AdminEditionsController extends AsyncNotifier<List<Edition>> {
         if (e.id == id)
           updated
         else if (active == true && e.active)
-          Edition(
-            id: e.id,
-            year: e.year,
-            name: e.name,
-            active: false,
-            createdAt: e.createdAt,
-          )
+          e.copyWith(active: false)
         else
           e,
     ];
@@ -74,6 +60,18 @@ class AdminEditionsController extends AsyncNotifier<List<Edition>> {
 
   Future<void> toggleActive(Edition edition) =>
       patch(edition.id, active: !edition.active);
+
+  /// Advance/regress the contest phase (preparacion ↔ evaluacion ↔ cerrada).
+  Future<Edition> setPhase(String id, EditionPhase phase) async {
+    final updated =
+        await ref.read(adminEditionsRepositoryProvider).setPhase(id, phase);
+    final current = state.asData?.value ?? const <Edition>[];
+    state = AsyncData([
+      for (final e in current)
+        if (e.id == id) updated else e,
+    ]);
+    return updated;
+  }
 
   Future<void> delete(String id) async {
     await ref.read(adminEditionsRepositoryProvider).delete(id);

@@ -61,6 +61,20 @@ class AdminEditionsRepository {
     }
   }
 
+  Future<Edition> setPhase(String id, EditionPhase phase) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/admin/editions/$id/phase',
+        data: {'phase': phase.apiValue},
+      );
+      return Edition.fromJson(response.data!);
+    } on DioException catch (e) {
+      throw _map(e);
+    } catch (e) {
+      throw EditionsUnexpected(e.toString());
+    }
+  }
+
   Future<void> delete(String id) async {
     try {
       await _dio.delete<void>('/admin/editions/$id');
@@ -87,6 +101,9 @@ class AdminEditionsRepository {
         final detail = _detail(e.response?.data);
         if (detail != null && detail.contains('year')) {
           return const EditionsYearTaken();
+        }
+        if (detail != null && detail.contains('evaluaciones')) {
+          return const EditionsPhaseLocked();
         }
         return const EditionsHasReferences();
       case 400:

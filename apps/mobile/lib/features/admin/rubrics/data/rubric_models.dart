@@ -28,6 +28,7 @@ class RubricSummary {
     required this.tipo,
     required this.descripcion,
     required this.activo,
+    required this.editable,
     required this.sectionCount,
     required this.criterionCount,
   });
@@ -38,6 +39,10 @@ class RubricSummary {
   final RubricType tipo;
   final String? descripcion;
   final bool activo;
+
+  /// `true` si la edición está en fase `preparacion`: la estructura puede
+  /// crearse/editarse/borrarse. `false` una vez en evaluación/cerrada.
+  final bool editable;
   final int sectionCount;
   final int criterionCount;
 
@@ -48,6 +53,7 @@ class RubricSummary {
         tipo: RubricType.fromApi(json['tipo'] as String),
         descripcion: json['descripcion'] as String?,
         activo: json['activo'] as bool,
+        editable: json['editable'] as bool? ?? false,
         sectionCount: (json['section_count'] as num).toInt(),
         criterionCount: (json['criterion_count'] as num).toInt(),
       );
@@ -64,6 +70,7 @@ class RubricSummary {
         tipo: tipo,
         descripcion: descripcion ?? this.descripcion,
         activo: activo ?? this.activo,
+        editable: editable,
         sectionCount: sectionCount,
         criterionCount: criterionCount,
       );
@@ -120,13 +127,18 @@ class RubricCriterion {
         kind: json['kind'] as String,
       );
 
-  String get kindLabel => switch (kind) {
-        'scale' => 'Escala',
-        'boolean' => 'Sí/No',
-        'text_key' => 'Texto clave',
-        _ => kind,
-      };
+  String get kindLabel => labelForKind(kind);
 }
+
+/// Tipos de criterio aceptados por el API (`criterion_kind`).
+const List<String> kCriterionKinds = ['scale', 'boolean', 'text_key'];
+
+String labelForKind(String kind) => switch (kind) {
+      'scale' => 'Escala',
+      'boolean' => 'Sí/No',
+      'text_key' => 'Texto clave',
+      _ => kind,
+    };
 
 class RubricDetail {
   const RubricDetail({
@@ -136,6 +148,7 @@ class RubricDetail {
     required this.tipo,
     required this.descripcion,
     required this.activo,
+    required this.editable,
     required this.categorias,
     required this.sections,
   });
@@ -146,6 +159,9 @@ class RubricDetail {
   final RubricType tipo;
   final String? descripcion;
   final bool activo;
+
+  /// `true` si la edición está en fase `preparacion` (estructura editable).
+  final bool editable;
   final List<String> categorias;
   final List<RubricSection> sections;
 
@@ -156,6 +172,7 @@ class RubricDetail {
         tipo: RubricType.fromApi(json['tipo'] as String),
         descripcion: json['descripcion'] as String?,
         activo: json['activo'] as bool,
+        editable: json['editable'] as bool? ?? false,
         categorias: (json['categorias'] as List<dynamic>).cast<String>(),
         sections: (json['sections'] as List<dynamic>)
             .cast<Map<String, dynamic>>()
@@ -197,6 +214,14 @@ class RubricHasEvaluations extends RubricFailure {
   @override
   String get message =>
       'No se puede eliminar: ya tiene evaluaciones. Archívala desactivándola.';
+}
+
+/// 409: la edición ya no está en preparación, la estructura está congelada.
+class RubricLocked extends RubricFailure {
+  const RubricLocked();
+  @override
+  String get message =>
+      'La edición ya está en evaluación: la rúbrica está congelada.';
 }
 
 class RubricValidation extends RubricFailure {

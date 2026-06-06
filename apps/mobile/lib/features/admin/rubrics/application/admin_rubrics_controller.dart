@@ -76,6 +76,47 @@ class AdminRubricsController extends AsyncNotifier<List<RubricSummary>> {
     final current = state.asData?.value ?? const <RubricSummary>[];
     state = AsyncData(current.where((r) => r.id != id).toList(growable: false));
   }
+
+  /// Crea una rúbrica nueva con su árbol y recarga la lista.
+  Future<RubricDetail> createRubric({
+    required String editionId,
+    required String nombre,
+    required RubricType tipo,
+    String? descripcion,
+    required List<String> categorias,
+    required List<Map<String, dynamic>> sections,
+  }) async {
+    final detail = await ref.read(adminRubricsRepositoryProvider).create(
+          editionId: editionId,
+          nombre: nombre,
+          tipo: tipo,
+          descripcion: descripcion,
+          categorias: categorias,
+          sections: sections,
+        );
+    await _reload();
+    return detail;
+  }
+
+  /// Reemplaza el árbol completo de una rúbrica y recarga la lista.
+  Future<RubricDetail> saveStructure(
+    String id, {
+    required List<String> categorias,
+    required List<Map<String, dynamic>> sections,
+  }) async {
+    final detail = await ref
+        .read(adminRubricsRepositoryProvider)
+        .replaceStructure(id, categorias: categorias, sections: sections);
+    await _reload();
+    return detail;
+  }
+
+  /// Recarga la lista sin parpadeo de loading (preserva la vista actual).
+  Future<void> _reload() async {
+    state = await AsyncValue.guard(
+      () => ref.read(adminRubricsRepositoryProvider).list(),
+    );
+  }
 }
 
 final adminRubricsControllerProvider =

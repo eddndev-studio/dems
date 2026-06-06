@@ -1,9 +1,37 @@
+/// Fase del flujo de una edición (espejo del enum `edition_phase` del API).
+/// La estructura de rúbricas solo es editable en [preparacion].
+enum EditionPhase {
+  preparacion,
+  evaluacion,
+  cerrada;
+
+  String get apiValue => switch (this) {
+        EditionPhase.preparacion => 'preparacion',
+        EditionPhase.evaluacion => 'evaluacion',
+        EditionPhase.cerrada => 'cerrada',
+      };
+
+  String get label => switch (this) {
+        EditionPhase.preparacion => 'Preparación',
+        EditionPhase.evaluacion => 'Evaluación',
+        EditionPhase.cerrada => 'Cerrada',
+      };
+
+  static EditionPhase fromApi(String s) => switch (s) {
+        'preparacion' => EditionPhase.preparacion,
+        'evaluacion' => EditionPhase.evaluacion,
+        'cerrada' => EditionPhase.cerrada,
+        _ => throw FormatException('Unknown edition phase: $s'),
+      };
+}
+
 class Edition {
   const Edition({
     required this.id,
     required this.year,
     required this.name,
     required this.active,
+    required this.phase,
     required this.createdAt,
   });
 
@@ -11,6 +39,7 @@ class Edition {
   final int year;
   final String name;
   final bool active;
+  final EditionPhase phase;
   final DateTime createdAt;
 
   factory Edition.fromJson(Map<String, dynamic> json) => Edition(
@@ -18,7 +47,17 @@ class Edition {
         year: json['year'] as int,
         name: json['name'] as String,
         active: json['active'] as bool,
+        phase: EditionPhase.fromApi(json['phase'] as String),
         createdAt: DateTime.parse(json['created_at'] as String),
+      );
+
+  Edition copyWith({bool? active, String? name, EditionPhase? phase}) => Edition(
+        id: id,
+        year: year,
+        name: name ?? this.name,
+        active: active ?? this.active,
+        phase: phase ?? this.phase,
+        createdAt: createdAt,
       );
 }
 
@@ -51,6 +90,15 @@ class EditionsHasReferences extends EditionsFailure {
   String get message =>
       'No se puede eliminar: tiene rúbricas o prototipos asociados. '
       'Desactívala en su lugar.';
+}
+
+/// 409 al intentar reabrir una edición que ya tiene evaluaciones: descongelar
+/// la rúbrica corrompería los puntajes capturados.
+class EditionsPhaseLocked extends EditionsFailure {
+  const EditionsPhaseLocked();
+  @override
+  String get message =>
+      'No se puede regresar a preparación: ya hay evaluaciones registradas.';
 }
 
 class EditionsNotFound extends EditionsFailure {

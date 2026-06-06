@@ -8,7 +8,9 @@ import '../../../../shared/widgets/stagger_reveal.dart';
 import '../../editions/application/admin_editions_controller.dart';
 import '../../editions/data/edition_models.dart';
 import '../application/admin_rubrics_controller.dart';
+import '../data/admin_rubrics_repository.dart';
 import '../data/rubric_models.dart';
+import 'rubric_editor_page.dart';
 import 'widgets/rubric_detail_dialog.dart';
 
 class AdminRubricsPage extends ConsumerWidget {
@@ -45,6 +47,7 @@ class AdminRubricsPage extends ConsumerWidget {
                   child: _Header(
                     total: raw.asData?.value.length,
                     visible: filtered.asData?.value.length,
+                    onNew: () => _newRubric(context, ref),
                   ),
                 ),
               ),
@@ -94,9 +97,14 @@ class AdminRubricsPage extends ConsumerWidget {
 // ──────────────────────────────────────────────────────────────────────────
 
 class _Header extends StatelessWidget {
-  const _Header({required this.total, required this.visible});
+  const _Header({
+    required this.total,
+    required this.visible,
+    required this.onNew,
+  });
   final int? total;
   final int? visible;
+  final VoidCallback onNew;
 
   @override
   Widget build(BuildContext context) {
@@ -107,38 +115,77 @@ class _Header extends StatelessWidget {
             ? '$total ${total == 1 ? "rúbrica" : "rúbricas"} registradas'
             : '$visible de $total visibles tras los filtros';
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const StaggerReveal(
-          child: EyebrowTag(label: 'Administración · Rúbricas'),
-        ),
-        const SizedBox(height: 16),
-        StaggerReveal(
-          delay: const Duration(milliseconds: 80),
-          child: Text(
-            'Plantillas de evaluación',
-            style: text.displaySmall?.copyWith(fontSize: 36, height: 1.05),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stack = constraints.maxWidth < 560;
+        final left = Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const StaggerReveal(
+                child: EyebrowTag(label: 'Administración · Rúbricas'),
+              ),
+              const SizedBox(height: 16),
+              StaggerReveal(
+                delay: const Duration(milliseconds: 80),
+                child: Text(
+                  'Plantillas de evaluación',
+                  style:
+                      text.displaySmall?.copyWith(fontSize: 36, height: 1.05),
+                ),
+              ),
+              const SizedBox(height: 6),
+              StaggerReveal(
+                delay: const Duration(milliseconds: 140),
+                child: Text(
+                  summary,
+                  style:
+                      text.bodyMedium?.copyWith(color: AppColors.textSecondary),
+                ),
+              ),
+              const SizedBox(height: 6),
+              StaggerReveal(
+                delay: const Duration(milliseconds: 200),
+                child: Text(
+                  'Crea y edita rúbricas mientras la edición esté en '
+                  'preparación. Al iniciar la evaluación quedan congeladas.',
+                  style:
+                      text.bodySmall?.copyWith(color: AppColors.textTertiary),
+                ),
+              ),
+            ],
           ),
-        ),
-        const SizedBox(height: 6),
-        StaggerReveal(
-          delay: const Duration(milliseconds: 140),
-          child: Text(
-            summary,
-            style: text.bodyMedium?.copyWith(color: AppColors.textSecondary),
+        );
+        final cta = StaggerReveal(
+          delay: const Duration(milliseconds: 180),
+          child: FilledButton.icon(
+            onPressed: onNew,
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text('Nueva rúbrica'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
           ),
-        ),
-        const SizedBox(height: 6),
-        StaggerReveal(
-          delay: const Duration(milliseconds: 200),
-          child: Text(
-            'El árbol de secciones y criterios se gestiona desde el seed. '
-            'Aquí puedes ver, archivar y eliminar plantillas.',
-            style: text.bodySmall?.copyWith(color: AppColors.textTertiary),
-          ),
-        ),
-      ],
+        );
+
+        return stack
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(children: [left]),
+                  const SizedBox(height: 16),
+                  Align(alignment: Alignment.centerLeft, child: cta),
+                ],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [left, const SizedBox(width: 18), cta],
+              );
+      },
     );
   }
 }
@@ -387,7 +434,7 @@ class _TableHeader extends StatelessWidget {
           Expanded(flex: 14, child: Text('EDICIÓN', style: style)),
           Expanded(flex: 14, child: Text('ESTADO', style: style)),
           SizedBox(
-            width: 140,
+            width: 176,
             child: Text('ACCIONES', style: style, textAlign: TextAlign.right),
           ),
         ],
@@ -483,7 +530,7 @@ class _RubricRowState extends ConsumerState<_RubricRow> {
             ),
             Expanded(flex: 14, child: _ActivoBadge(active: r.activo)),
             SizedBox(
-              width: 140,
+              width: 176,
               child: _RowActions(rubric: r),
             ),
           ],
@@ -502,6 +549,26 @@ class _RowActions extends ConsumerWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
+        if (rubric.editable)
+          Tooltip(
+            message: 'Editar',
+            child: IconButton(
+              onPressed: () => _editRubric(context, ref, rubric),
+              icon: const Icon(Icons.edit_outlined, size: 16),
+              color: AppColors.textSecondary,
+              visualDensity: VisualDensity.compact,
+            ),
+          )
+        else
+          Tooltip(
+            message: 'Congelada: la edición ya está en evaluación',
+            child: IconButton(
+              onPressed: null,
+              icon: const Icon(Icons.lock_outline_rounded, size: 15),
+              color: AppColors.textTertiary,
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
         Tooltip(
           message: 'Ver árbol',
           child: IconButton(
@@ -651,7 +718,9 @@ class _MoreMenuMobile extends ConsumerWidget {
       icon: Icon(Icons.more_vert_rounded,
           size: 18, color: AppColors.textSecondary),
       onSelected: (v) {
-        if (v == 'tree') {
+        if (v == 'edit') {
+          _editRubric(context, ref, rubric);
+        } else if (v == 'tree') {
           RubricDetailDialog.show(context, rubric: rubric);
         } else if (v == 'toggle') {
           _toggleActivo(context, ref, rubric);
@@ -660,6 +729,8 @@ class _MoreMenuMobile extends ConsumerWidget {
         }
       },
       itemBuilder: (_) => [
+        if (rubric.editable)
+          const PopupMenuItem<String>(value: 'edit', child: Text('Editar')),
         const PopupMenuItem<String>(value: 'tree', child: Text('Ver árbol')),
         PopupMenuItem<String>(
           value: 'toggle',
@@ -783,6 +854,29 @@ class _ActivoBadge extends StatelessWidget {
 // ──────────────────────────────────────────────────────────────────────────
 //  Side-effects: toggle + delete + confirm
 // ──────────────────────────────────────────────────────────────────────────
+
+Future<void> _newRubric(BuildContext context, WidgetRef ref) async {
+  final saved = await RubricEditorPage.show(context);
+  if (saved == true && context.mounted) _toast(context, 'Rúbrica creada.');
+}
+
+Future<void> _editRubric(
+  BuildContext context,
+  WidgetRef ref,
+  RubricSummary r,
+) async {
+  // El editor necesita el árbol completo (secciones + categorías).
+  try {
+    final detail = await ref.read(adminRubricsRepositoryProvider).getById(r.id);
+    if (!context.mounted) return;
+    final saved = await RubricEditorPage.show(context, initial: detail);
+    if (saved == true && context.mounted) {
+      _toast(context, 'Rúbrica actualizada.');
+    }
+  } on RubricFailure catch (e) {
+    if (context.mounted) _toast(context, e.message, isError: true);
+  }
+}
 
 Future<void> _toggleActivo(
   BuildContext context,

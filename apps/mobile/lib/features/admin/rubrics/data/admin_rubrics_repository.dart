@@ -33,6 +33,55 @@ class AdminRubricsRepository {
     }
   }
 
+  Future<RubricDetail> create({
+    required String editionId,
+    required String nombre,
+    required RubricType tipo,
+    String? descripcion,
+    required List<String> categorias,
+    required List<Map<String, dynamic>> sections,
+  }) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/admin/rubric-templates',
+        data: {
+          'edition_id': editionId,
+          'nombre': nombre,
+          'tipo': tipo.apiValue,
+          if (descripcion != null && descripcion.isNotEmpty)
+            'descripcion': descripcion,
+          'categorias': categorias,
+          'sections': sections,
+        },
+      );
+      return RubricDetail.fromJson(response.data!);
+    } on DioException catch (e) {
+      throw _map(e);
+    } catch (e) {
+      throw RubricUnexpected(e.toString());
+    }
+  }
+
+  /// Reemplaza por completo el árbol (categorías + secciones + criterios) de una
+  /// rúbrica. Solo permitido si la edición está en preparación (si no, 409).
+  Future<RubricDetail> replaceStructure(
+    String id, {
+    required List<String> categorias,
+    required List<Map<String, dynamic>> sections,
+  }) async {
+    try {
+      final response = await _dio.put<Map<String, dynamic>>(
+        '/admin/rubric-templates/$id/structure',
+        data: {'categorias': categorias, 'sections': sections},
+      );
+      return RubricDetail.fromJson(response.data!);
+    } on DioException catch (e) {
+      throw _map(e);
+    } catch (e) {
+      throw RubricUnexpected(e.toString());
+    }
+  }
+
   Future<RubricDetail> getById(String id) async {
     try {
       final response =
@@ -92,6 +141,9 @@ class AdminRubricsRepository {
       case 404:
         return const RubricNotFound();
       case 409:
+        if (detail != null && detail.contains('preparacion')) {
+          return const RubricLocked();
+        }
         return const RubricHasEvaluations();
       case 400:
       case 422:

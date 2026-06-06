@@ -227,7 +227,8 @@ class _TableHeader extends StatelessWidget {
         children: [
           SizedBox(width: 92, child: Text('AÑO', style: style)),
           Expanded(child: Text('NOMBRE', style: style)),
-          SizedBox(width: 140, child: Text('ESTADO', style: style)),
+          SizedBox(width: 140, child: Text('FASE', style: style)),
+          SizedBox(width: 120, child: Text('ESTADO', style: style)),
           SizedBox(
             width: 130,
             child:
@@ -282,7 +283,8 @@ class _EditionRowState extends ConsumerState<_EditionRow> {
                 ),
               ),
             ),
-            SizedBox(width: 140, child: _StatusBadge(active: e.active)),
+            SizedBox(width: 140, child: _PhaseBadge(phase: e.phase)),
+            SizedBox(width: 120, child: _StatusBadge(active: e.active)),
             SizedBox(
               width: 130,
               child: _RowActions(edition: e, ref: ref),
@@ -359,7 +361,10 @@ class _MoreMenu extends StatelessWidget {
       icon: Icon(Icons.more_horiz_rounded,
           size: 16, color: AppColors.textSecondary),
       onSelected: (v) async {
-        if (v == 'deactivate') {
+        if (v.startsWith('phase:')) {
+          final target = EditionPhase.fromApi(v.substring('phase:'.length));
+          await _changePhase(context, ref, edition, target);
+        } else if (v == 'deactivate') {
           try {
             await ref
                 .read(adminEditionsControllerProvider.notifier)
@@ -382,6 +387,18 @@ class _MoreMenu extends StatelessWidget {
         }
       },
       itemBuilder: (_) => [
+        for (final target in _nextPhases(edition.phase))
+          PopupMenuItem<String>(
+            value: 'phase:${target.apiValue}',
+            child: Row(
+              children: [
+                Icon(_phaseActionIcon(edition.phase, target),
+                    size: 14, color: AppColors.accent),
+                const SizedBox(width: 10),
+                Text(_phaseActionLabel(edition.phase, target)),
+              ],
+            ),
+          ),
         if (edition.active)
           PopupMenuItem<String>(
             value: 'deactivate',
@@ -460,8 +477,15 @@ class _EditionCard extends ConsumerWidget {
                     color: AppColors.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 6),
-                _StatusBadge(active: edition.active),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    _PhaseBadge(phase: edition.phase),
+                    _StatusBadge(active: edition.active),
+                  ],
+                ),
               ],
             ),
           ),
@@ -490,6 +514,11 @@ class _MoreMenuMobile extends StatelessWidget {
       icon: Icon(Icons.more_vert_rounded,
           size: 18, color: AppColors.textSecondary),
       onSelected: (v) async {
+        if (v.startsWith('phase:')) {
+          final target = EditionPhase.fromApi(v.substring('phase:'.length));
+          await _changePhase(context, ref, edition, target);
+          return;
+        }
         switch (v) {
           case 'edit':
             EditionFormDialog.show(context, initial: edition);
@@ -527,6 +556,11 @@ class _MoreMenuMobile extends StatelessWidget {
       },
       itemBuilder: (_) => [
         const PopupMenuItem<String>(value: 'edit', child: Text('Editar')),
+        for (final target in _nextPhases(edition.phase))
+          PopupMenuItem<String>(
+            value: 'phase:${target.apiValue}',
+            child: Text(_phaseActionLabel(edition.phase, target)),
+          ),
         PopupMenuItem<String>(
           value: 'toggle',
           child: Text(edition.active ? 'Desactivar' : 'Marcar como activa'),
@@ -571,6 +605,96 @@ class _YearChip extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _PhaseBadge extends StatelessWidget {
+  const _PhaseBadge({required this.phase});
+  final EditionPhase phase;
+
+  @override
+  Widget build(BuildContext context) {
+    final (color, icon) = switch (phase) {
+      EditionPhase.preparacion => (AppColors.accent, Icons.edit_note_rounded),
+      EditionPhase.evaluacion => (AppColors.success, Icons.how_to_vote_outlined),
+      EditionPhase.cerrada => (AppColors.textTertiary, Icons.lock_outline_rounded),
+    };
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(color: color.withValues(alpha: 0.32)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 6),
+            Text(
+              phase.label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: color,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Fases alcanzables en un paso desde [p] (adyacencia preparacion ↔ evaluacion
+/// ↔ cerrada), espejo del backend.
+List<EditionPhase> _nextPhases(EditionPhase p) => switch (p) {
+      EditionPhase.preparacion => const [EditionPhase.evaluacion],
+      EditionPhase.evaluacion =>
+        const [EditionPhase.cerrada, EditionPhase.preparacion],
+      EditionPhase.cerrada => const [EditionPhase.evaluacion],
+    };
+
+String _phaseActionLabel(EditionPhase from, EditionPhase to) {
+  if (to == EditionPhase.evaluacion && from == EditionPhase.preparacion) {
+    return 'Iniciar evaluación';
+  }
+  if (to == EditionPhase.cerrada) return 'Cerrar edición';
+  if (to == EditionPhase.preparacion) return 'Reabrir preparación';
+  return 'Reabrir evaluación';
+}
+
+IconData _phaseActionIcon(EditionPhase from, EditionPhase to) {
+  if (to == EditionPhase.cerrada) return Icons.lock_outline_rounded;
+  if (to == EditionPhase.preparacion) return Icons.undo_rounded;
+  return Icons.play_arrow_rounded; // → evaluacion
+}
+
+/// Confirma (cuando aplica) y aplica una transición de fase.
+Future<void> _changePhase(
+  BuildContext context,
+  WidgetRef ref,
+  Edition edition,
+  EditionPhase target,
+) async {
+  // Iniciar evaluación congela las rúbricas: pedir confirmación explícita.
+  if (edition.phase == EditionPhase.preparacion &&
+      target == EditionPhase.evaluacion) {
+    final ok = await _confirmStartEvaluation(context, edition);
+    if (ok != true) return;
+  }
+  try {
+    await ref
+        .read(adminEditionsControllerProvider.notifier)
+        .setPhase(edition.id, target);
+    if (context.mounted) {
+      _toast(context, 'Edición ${edition.year}: ${target.label}.');
+    }
+  } on EditionsFailure catch (e) {
+    if (context.mounted) _toast(context, e.message, isError: true);
   }
 }
 
@@ -751,6 +875,77 @@ void _toast(BuildContext context, String message, {bool isError = false}) {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       margin: const EdgeInsets.all(16),
       duration: const Duration(seconds: 3),
+    ),
+  );
+}
+
+Future<bool?> _confirmStartEvaluation(BuildContext context, Edition edition) {
+  return showDialog<bool>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.6),
+    builder: (ctx) => Dialog(
+      backgroundColor: AppColors.surface1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: AppColors.hairline),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Iniciar evaluación',
+                  style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(
+                'La edición ${edition.year} pasará a fase de evaluación. '
+                'Las rúbricas quedarán congeladas: ya no podrás crear, editar '
+                'ni borrar su estructura. Podrás reabrir a preparación solo '
+                'mientras no existan evaluaciones.',
+                style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(color: AppColors.hairlineStrong),
+                        foregroundColor: AppColors.textSecondary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Cancelar'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(ctx).pop(true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Iniciar evaluación'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     ),
   );
 }
