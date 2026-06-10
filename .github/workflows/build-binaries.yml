@@ -1,0 +1,103 @@
+name: build-binaries
+
+# Compila los binarios nativos del API (Windows y Linux) y los deja descargables:
+#   - workflow_dispatch -> artefactos del run (Actions → run → Artifacts).
+#   - push de tag v*     -> además se adjuntan al GitHub Release.
+#
+# El binario de Windows se cross-compila desde el runner Linux (vps2) con cargo-xwin
+# (clang + lld ya presentes en el runner). dems-api.exe trae las migraciones embebidas
+# y se autoaplica al arrancar.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # adjuntar binarios al Release en tags
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    name: API binaries (Windows x64)
+    runs-on: [self-hosted, vps2]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/api -> target
+
+      - name: Asegurar cargo-xwin
+        run: command -v cargo-xwin >/dev/null 2>&1 || cargo install cargo-xwin --locked
+
+      - name: Cross-compile dems-api.exe + seed.exe (MSVC)
+        working-directory: apps/api
+        run: cargo xwin build --release --target x86_64-pc-windows-msvc --bin dems-api --bin seed
+
+      - name: Ensamblar bundle de Windows
+        run: |
+          set -e
+          B=dist/dems-windows-server
+          rm -rf dist && mkdir -p "$B"
+          cp apps/api/target/x86_64-pc-windows-msvc/release/dems-api.exe "$B/"
+          cp apps/api/target/x86_64-pc-windows-msvc/release/seed.exe "$B/"
+          cp deploy/windows/setup-db.bat deploy/windows/run-server.bat \
+             deploy/windows/seed-db.bat deploy/windows/LEEME-Windows.md "$B/"
+          # .env con JWT_SECRET aleatorio por build
+          sed "s/__GENERA_UN_VALOR_ALEATORIO__/$(openssl rand -hex 32)/" \
+             deploy/windows/.env.example > "$B/.env"
+          python3 -c "import shutil; shutil.make_archive('dist/dems-windows-server','zip','dist','dems-windows-server')"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dems-windows-server
+          path: dist/dems-windows-server.zip
+          if-no-files-found: error
+
+      - name: Adjuntar al Release (en tag)
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/dems-windows-server.zip
+
+  linux:
+    name: API binary (Linux x64)
+    runs-on: [self-hosted, vps2]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/api -> target
+
+      - name: Compilar dems-api + seed (Linux)
+        working-directory: apps/api
+        run: cargo build --release --bin dems-api --bin seed
+
+      - name: Empaquetar
+        run: |
+          mkdir -p dist
+          tar -czf dist/dems-api-linux-x64.tar.gz -C apps/api/target/release dems-api seed
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dems-api-linux-x64
+          path: dist/dems-api-linux-x64.tar.gz
+          if-no-files-found: error
+
+      - name: Adjuntar al Release (en tag)
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/dems-api-linux-x64.tar.gz
