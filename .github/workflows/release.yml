@@ -1,0 +1,125 @@
+name: release-app
+
+# Compila la app Flutter en release apuntando a PRODUCCIÓN
+# (--dart-define=API_BASE_URL gana sobre cualquier default de env.dart).
+#
+# Disparadores:
+#   - push de un tag `v*`  -> compila y crea un GitHub Release con los artefactos.
+#   - manual (workflow_dispatch) -> compila y sube los artefactos al run.
+#
+# FIRMA: el buildType release usa la llave debug (apps/mobile/android/app/build.gradle.kts).
+# Los APK/AAB son instalables por sideload, pero NO aptos para Play Store ni para
+# actualizar sobre una versión firmada con otra llave. Para firma real:
+#   1. Subir secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+#      ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
+#   2. Añadir signingConfig "release" en build.gradle.kts leyendo key.properties.
+#   3. Materializar keystore + key.properties en este workflow antes del build.
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_name:
+        description: "Version name (ej. 1.0.0). Vacío = usa pubspec."
+        required: false
+        default: ""
+      build_number:
+        description: "Build number (entero). Vacío = usa el run number."
+        required: false
+        default: ""
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  API_BASE_URL: https://dems.eddndev.work
+  ANDROID_SDK_ROOT: /opt/android-sdk
+  ANDROID_HOME: /opt/android-sdk
+
+jobs:
+  build:
+    name: build release (android + web)
+    runs-on: [self-hosted, vps2]
+    defaults:
+      run:
+        working-directory: apps/mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.5'
+          channel: 'stable'
+          cache: true
+
+      - name: Apuntar Flutter al SDK de Android del runner
+        run: flutter config --android-sdk "$ANDROID_SDK_ROOT"
+
+      - name: Derivar versión
+        id: ver
+        run: |
+          name="${{ github.event.inputs.build_name }}"
+          if [ -z "$name" ] && [ "${{ github.ref_type }}" = "tag" ]; then
+            name="${GITHUB_REF_NAME#v}"
+          fi
+          num="${{ github.event.inputs.build_number }}"
+          [ -z "$num" ] && num="${{ github.run_number }}"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "num=$num" >> "$GITHUB_OUTPUT"
+          echo "build-name='${name:-<pubspec>}'  build-number='$num'"
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: Code generation (build_runner)
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build APK (release)
+        run: |
+          args="--release --dart-define=API_BASE_URL=$API_BASE_URL"
+          [ -n "${{ steps.ver.outputs.name }}" ] && args="$args --build-name=${{ steps.ver.outputs.name }}"
+          [ -n "${{ steps.ver.outputs.num }}" ] && args="$args --build-number=${{ steps.ver.outputs.num }}"
+          echo "flutter build apk $args"
+          flutter build apk $args
+
+      - name: Build App Bundle (release)
+        run: |
+          args="--release --dart-define=API_BASE_URL=$API_BASE_URL"
+          [ -n "${{ steps.ver.outputs.name }}" ] && args="$args --build-name=${{ steps.ver.outputs.name }}"
+          [ -n "${{ steps.ver.outputs.num }}" ] && args="$args --build-number=${{ steps.ver.outputs.num }}"
+          flutter build appbundle $args
+
+      - name: Build web (release)
+        run: flutter build web --release --dart-define=API_BASE_URL=$API_BASE_URL
+
+      - name: Empaquetar web
+        run: tar -czf build/dems-web.tar.gz -C build/web .
+
+      - name: Subir artefactos
+        uses: actions/upload-artifact@v4
+        with:
+          name: dems-release-${{ github.run_number }}
+          path: |
+            apps/mobile/build/app/outputs/flutter-apk/app-release.apk
+            apps/mobile/build/app/outputs/bundle/release/app-release.aab
+            apps/mobile/build/dems-web.tar.gz
+          if-no-files-found: error
+
+      - name: Crear GitHub Release (solo en tag)
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: DEMS app ${{ github.ref_name }}
+          body: |
+            App DEMS — release ${{ github.ref_name }} (API → https://dems.eddndev.work).
+
+            ⚠️ APK/AAB firmados con la llave **debug** (sideload OK; Play Store y
+            actualizaciones in-place requieren un keystore propio — ver cabecera del workflow).
+          files: |
+            apps/mobile/build/app/outputs/flutter-apk/app-release.apk
+            apps/mobile/build/app/outputs/bundle/release/app-release.aab
+            apps/mobile/build/dems-web.tar.gz
