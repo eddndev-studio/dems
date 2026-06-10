@@ -1,0 +1,48 @@
+# DEMS production stack — VPS2.
+# Run from deploy/:  docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+#
+# - postgres: dedicated, NOT published (only reachable on the compose network).
+# - api:      published on 127.0.0.1:8090, fronted by nginx (dems.eddndev.work).
+#             Runs migrations on startup; seed once with `compose run --rm api seed`.
+name: dems
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dems-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dems
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in deploy/.env}
+      POSTGRES_DB: dems
+    volumes:
+      - dems_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dems -d dems"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    image: dems-api:latest
+    container_name: dems-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://dems:${POSTGRES_PASSWORD}@postgres:5432/dems
+      API_HOST: 0.0.0.0
+      API_PORT: 8080
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in deploy/.env}
+      JWT_ACCESS_TTL_SECS: ${JWT_ACCESS_TTL_SECS:-900}
+      JWT_REFRESH_TTL_SECS: ${JWT_REFRESH_TTL_SECS:-2592000}
+      RUST_LOG: ${RUST_LOG:-dems_api=info,tower_http=info,sqlx=warn}
+    ports:
+      - "127.0.0.1:8090:8080"
+
+volumes:
+  dems_pgdata:

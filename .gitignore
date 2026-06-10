@@ -3,6 +3,9 @@ target/
 **/*.rs.bk
 Cargo.lock.bak
 
+# Deploy secrets (production env lives only on the VPS)
+deploy/.env
+
 # Flutter / Dart
 .dart_tool/
 .flutter-plugins
