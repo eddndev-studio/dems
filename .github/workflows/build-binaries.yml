@@ -23,39 +23,36 @@ env:
 jobs:
   windows:
     name: API binaries (Windows x64)
-    runs-on: [self-hosted, vps2]
+    # MSVC nativo en runner hospedado: sin cargo-xwin/clang-cl (más fiable que
+    # cross-compilar en el self-hosted, que tiene un rust-wrapper que rompe rustc).
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/api -> target
 
-      - name: Asegurar cargo-xwin
-        run: command -v cargo-xwin >/dev/null 2>&1 || cargo install cargo-xwin --locked
-
-      - name: Cross-compile dems-api.exe + seed.exe (MSVC)
+      - name: Compilar dems-api.exe + seed.exe
         working-directory: apps/api
-        run: cargo xwin build --release --target x86_64-pc-windows-msvc --bin dems-api --bin seed
+        run: cargo build --release --bin dems-api --bin seed
 
       - name: Ensamblar bundle de Windows
         run: |
-          set -e
-          B=dist/dems-windows-server
-          rm -rf dist && mkdir -p "$B"
-          cp apps/api/target/x86_64-pc-windows-msvc/release/dems-api.exe "$B/"
-          cp apps/api/target/x86_64-pc-windows-msvc/release/seed.exe "$B/"
-          cp deploy/windows/setup-db.bat deploy/windows/run-server.bat \
-             deploy/windows/seed-db.bat deploy/windows/LEEME-Windows.md "$B/"
-          # .env con JWT_SECRET aleatorio por build
-          sed "s/__GENERA_UN_VALOR_ALEATORIO__/$(openssl rand -hex 32)/" \
-             deploy/windows/.env.example > "$B/.env"
-          python3 -c "import shutil; shutil.make_archive('dist/dems-windows-server','zip','dist','dems-windows-server')"
-          ls -la dist
+          $B = "dist/dems-windows-server"
+          New-Item -ItemType Directory -Force -Path $B | Out-Null
+          Copy-Item apps/api/target/release/dems-api.exe $B
+          Copy-Item apps/api/target/release/seed.exe $B
+          Copy-Item deploy/windows/setup-db.bat,deploy/windows/run-server.bat,deploy/windows/seed-db.bat,deploy/windows/instalar-postgres.bat,deploy/windows/LEEME-Windows.md $B
+          $jwt = -join ((1..64) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })
+          (Get-Content deploy/windows/.env.example -Raw) -replace '__GENERA_UN_VALOR_ALEATORIO__', $jwt | Set-Content "$B/.env"
+          Compress-Archive -Path $B -DestinationPath dist/dems-windows-server.zip -Force
+          Get-ChildItem dist
 
       - uses: actions/upload-artifact@v4
         with:
