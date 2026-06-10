@@ -1,0 +1,6 @@
+# Build context = apps/api. Keep migrations/, Cargo.lock, crates/.
+target
+**/target
+.env
+*.bak
+*.md
