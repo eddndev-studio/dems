@@ -653,7 +653,7 @@ class _FloatingBrandPill extends StatelessWidget {
                     borderRadius: BorderRadius.circular(99),
                   ),
                   child: Text(
-                    'v0.1',
+                    'v0.2',
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
