@@ -12,6 +12,7 @@ import '../asignaciones/application/asignaciones_controller.dart';
 import '../asignaciones/data/asignacion_models.dart';
 import '../asignaciones/presentation/asignacion_card.dart';
 import '../auth/application/auth_controller.dart';
+import '../settings/server_config_sheet.dart';
 
 class HomePage extends ConsumerWidget {
   const HomePage({super.key});
@@ -19,8 +20,9 @@ class HomePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authControllerProvider);
-    final authValue =
-        authState is AsyncData<AuthState> ? authState.value : null;
+    final authValue = authState is AsyncData<AuthState>
+        ? authState.value
+        : null;
     final user = authValue is AuthAuthenticated ? authValue.user : null;
 
     final async = ref.watch(asignacionesControllerProvider);
@@ -42,8 +44,8 @@ class HomePage extends ConsumerWidget {
                   final int cols = w >= 1200
                       ? 3
                       : w >= 760
-                          ? 2
-                          : 1;
+                      ? 2
+                      : 1;
                   final double horizontalPadding = w >= 960 ? 56 : 24;
                   return CustomScrollView(
                     physics: const AlwaysScrollableScrollPhysics(
@@ -64,6 +66,8 @@ class HomePage extends ConsumerWidget {
                             onLogout: () => ref
                                 .read(authControllerProvider.notifier)
                                 .logout(),
+                            onConfigureServer: () =>
+                                showServerConfigSheet(context),
                           ),
                         ),
                       ),
@@ -87,15 +91,13 @@ class HomePage extends ConsumerWidget {
                         ),
                         sliver: async.when(
                           data: (items) => items.isEmpty
-                              ? const SliverToBoxAdapter(
-                                  child: _EmptyState())
+                              ? const SliverToBoxAdapter(child: _EmptyState())
                               : _AsignacionesGrid(
                                   items: items,
                                   cols: cols,
-                                  onOpen: (it) =>
-                                      context.go(
-                                        '/evaluaciones/${it.prototipo.id}/${it.rubric.id}',
-                                      ),
+                                  onOpen: (it) => context.go(
+                                    '/evaluaciones/${it.prototipo.id}/${it.rubric.id}',
+                                  ),
                                 ),
                           loading: () => SliverToBoxAdapter(
                             child: _SkeletonGrid(cols: cols),
@@ -106,8 +108,7 @@ class HomePage extends ConsumerWidget {
                                   ? e.message
                                   : e.toString(),
                               onRetry: () => ref
-                                  .read(asignacionesControllerProvider
-                                      .notifier)
+                                  .read(asignacionesControllerProvider.notifier)
                                   .refresh(),
                             ),
                           ),
@@ -135,11 +136,13 @@ class _TopBar extends StatelessWidget {
     required this.fullName,
     required this.email,
     required this.onLogout,
+    required this.onConfigureServer,
   });
 
   final String fullName;
   final String email;
   final VoidCallback onLogout;
+  final VoidCallback onConfigureServer;
 
   @override
   Widget build(BuildContext context) {
@@ -186,6 +189,7 @@ class _TopBar extends StatelessWidget {
             fullName: fullName,
             email: email,
             onLogout: onLogout,
+            onConfigureServer: onConfigureServer,
           ),
         ],
       ),
@@ -198,11 +202,13 @@ class _UserChip extends StatefulWidget {
     required this.fullName,
     required this.email,
     required this.onLogout,
+    required this.onConfigureServer,
   });
 
   final String fullName;
   final String email;
   final VoidCallback onLogout;
+  final VoidCallback onConfigureServer;
 
   @override
   State<_UserChip> createState() => _UserChipState();
@@ -226,6 +232,7 @@ class _UserChipState extends State<_UserChip> {
       ),
       onSelected: (v) {
         if (v == 'logout') widget.onLogout();
+        if (v == 'server') widget.onConfigureServer();
       },
       itemBuilder: (_) => [
         PopupMenuItem<String>(
@@ -241,20 +248,37 @@ class _UserChipState extends State<_UserChip> {
               const SizedBox(height: 2),
               Text(
                 widget.email,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppColors.textTertiary,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppColors.textTertiary),
               ),
             ],
           ),
         ),
         const PopupMenuDivider(height: 1),
         PopupMenuItem<String>(
+          value: 'server',
+          child: Row(
+            children: [
+              Icon(
+                Icons.dns_outlined,
+                size: 14,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: 12),
+              Text('Servidor', style: Theme.of(context).textTheme.bodyMedium),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
           value: 'logout',
           child: Row(
             children: [
-              Icon(Icons.logout_rounded,
-                  size: 14, color: AppColors.textSecondary),
+              Icon(
+                Icons.logout_rounded,
+                size: 14,
+                color: AppColors.textSecondary,
+              ),
               const SizedBox(width: 12),
               Text(
                 'Cerrar sesión',
@@ -316,8 +340,11 @@ class _UserChipState extends State<_UserChip> {
                 ),
               ),
               const SizedBox(width: 8),
-              Icon(Icons.keyboard_arrow_down_rounded,
-                  size: 14, color: AppColors.textTertiary),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 14,
+                color: AppColors.textTertiary,
+              ),
             ],
           ),
         ),
@@ -327,8 +354,10 @@ class _UserChipState extends State<_UserChip> {
 
   String _initialsFrom(String name) {
     final parts = name.trim().split(RegExp(r'\s+'));
-    final letters =
-        parts.take(2).map((p) => p.isEmpty ? '' : p[0].toUpperCase()).join();
+    final letters = parts
+        .take(2)
+        .map((p) => p.isEmpty ? '' : p[0].toUpperCase())
+        .join();
     return letters.isEmpty ? '·' : letters;
   }
 }
@@ -350,17 +379,15 @@ class _Hero extends StatelessWidget {
     final String summary = total == null
         ? 'Cargando asignaciones…'
         : total == 0
-            ? 'No tienes asignaciones activas por ahora.'
-            : total == 1
-                ? '1 prototipo pendiente de evaluar.'
-                : '$total prototipos pendientes de evaluar.';
+        ? 'No tienes asignaciones activas por ahora.'
+        : total == 1
+        ? '1 prototipo pendiente de evaluar.'
+        : '$total prototipos pendientes de evaluar.';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const StaggerReveal(
-          child: EyebrowTag(label: 'Panel del jurado'),
-        ),
+        const StaggerReveal(child: EyebrowTag(label: 'Panel del jurado')),
         const SizedBox(height: 18),
         StaggerReveal(
           delay: const Duration(milliseconds: 80),
@@ -374,9 +401,7 @@ class _Hero extends StatelessWidget {
           delay: const Duration(milliseconds: 160),
           child: Text(
             summary,
-            style: text.bodyLarge?.copyWith(
-              color: AppColors.textSecondary,
-            ),
+            style: text.bodyLarge?.copyWith(color: AppColors.textSecondary),
           ),
         ),
       ],
@@ -411,10 +436,7 @@ class _AsignacionesGrid extends StatelessWidget {
       delegate: SliverChildBuilderDelegate(
         (context, i) => StaggerReveal(
           delay: Duration(milliseconds: 60 * (i % 6)),
-          child: AsignacionCard(
-            item: items[i],
-            onOpen: () => onOpen(items[i]),
-          ),
+          child: AsignacionCard(item: items[i], onOpen: () => onOpen(items[i])),
         ),
         childCount: items.length,
       ),
@@ -477,11 +499,9 @@ class _SkeletonCardState extends State<_SkeletonCard>
             children: [
               Row(
                 children: [
-                  _SkeletonBar(
-                      width: 90, height: 22, alpha: a, radius: 8),
+                  _SkeletonBar(width: 90, height: 22, alpha: a, radius: 8),
                   const Spacer(),
-                  _SkeletonBar(
-                      width: 100, height: 22, alpha: a, radius: 99),
+                  _SkeletonBar(width: 100, height: 22, alpha: a, radius: 99),
                 ],
               ),
               const SizedBox(height: 24),
@@ -610,8 +630,11 @@ class _ErrorBanner extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
-              child: Icon(Icons.error_outline_rounded,
-                  color: AppColors.danger, size: 18),
+              child: Icon(
+                Icons.error_outline_rounded,
+                color: AppColors.danger,
+                size: 18,
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -626,8 +649,8 @@ class _ErrorBanner extends StatelessWidget {
                   Text(
                     message,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
               ),

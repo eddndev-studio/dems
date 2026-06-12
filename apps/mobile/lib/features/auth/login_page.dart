@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/server_config.dart';
 import '../../shared/theme/app_colors.dart';
 import '../../shared/theme/app_motion.dart';
 import '../../shared/widgets/bezel_card.dart';
@@ -8,6 +9,7 @@ import '../../shared/widgets/eyebrow_tag.dart';
 import '../../shared/widgets/mesh_backdrop.dart';
 import '../../shared/widgets/primary_cta.dart';
 import '../../shared/widgets/stagger_reveal.dart';
+import '../settings/server_config_sheet.dart';
 import 'application/auth_controller.dart';
 import 'data/auth_models.dart';
 
@@ -33,18 +35,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    await ref.read(authControllerProvider.notifier).login(
-          email: _emailCtrl.text.trim(),
-          password: _pwCtrl.text,
-        );
+    await ref
+        .read(authControllerProvider.notifier)
+        .login(email: _emailCtrl.text.trim(), password: _pwCtrl.text);
   }
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
     final busy = authState.isLoading;
-    final failure =
-        authState.hasError ? authState.error as AuthFailure? : null;
+    final failure = authState.hasError ? authState.error as AuthFailure? : null;
 
     return Scaffold(
       body: Stack(
@@ -231,10 +231,7 @@ class _EditorialSide extends StatelessWidget {
         SizedBox(height: compact ? 24 : 40),
         StaggerReveal(
           delay: const Duration(milliseconds: 80),
-          child: _GradientHeading(
-            text: 'DEMS.',
-            fontSize: titleSize,
-          ),
+          child: _GradientHeading(text: 'DEMS.', fontSize: titleSize),
         ),
         SizedBox(height: compact ? 16 : 28),
         StaggerReveal(
@@ -285,11 +282,11 @@ class _GradientHeading extends StatelessWidget {
       child: Text(
         text,
         style: Theme.of(context).textTheme.displayLarge?.copyWith(
-              fontSize: fontSize,
-              fontWeight: FontWeight.w500,
-              letterSpacing: -fontSize * 0.045,
-              height: 0.95,
-            ),
+          fontSize: fontSize,
+          fontWeight: FontWeight.w500,
+          letterSpacing: -fontSize * 0.045,
+          height: 0.95,
+        ),
       ),
     );
   }
@@ -304,17 +301,17 @@ class _FeatureRow extends StatelessWidget {
       (
         Icons.draw_outlined,
         'Rúbrica oficial',
-        '7 categorías · escala 0-3 por rubro'
+        '7 categorías · escala 0-3 por rubro',
       ),
       (
         Icons.cloud_off_outlined,
         'Offline-first',
-        'Evalúa sin red, sincroniza al volver'
+        'Evalúa sin red, sincroniza al volver',
       ),
       (
         Icons.lock_outline_rounded,
         'Cuenta verificada',
-        'Acceso por invitación del comité'
+        'Acceso por invitación del comité',
       ),
     ];
     return Wrap(
@@ -336,8 +333,7 @@ class _FeatureRow extends StatelessWidget {
                     border: Border.all(color: AppColors.hairline),
                   ),
                   alignment: Alignment.center,
-                  child: Icon(icon,
-                      size: 16, color: AppColors.textPrimary),
+                  child: Icon(icon, size: 16, color: AppColors.textPrimary),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -346,18 +342,16 @@ class _FeatureRow extends StatelessWidget {
                     children: [
                       Text(
                         title,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleSmall
-                            ?.copyWith(color: AppColors.textPrimary),
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         subtitle,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: AppColors.textTertiary),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textTertiary,
+                        ),
                       ),
                     ],
                   ),
@@ -411,10 +405,7 @@ class _LoginCard extends StatelessWidget {
           children: [
             const EyebrowTag(label: 'Acceso jurado'),
             const SizedBox(height: 20),
-            Text(
-              'Inicia sesión',
-              style: theme.textTheme.headlineMedium,
-            ),
+            Text('Inicia sesión', style: theme.textTheme.headlineMedium),
             const SizedBox(height: 10),
             Text(
               'Accede con el correo institucional asignado por el comité. Si es tu primera vez, la contraseña temporal fue enviada por correo.',
@@ -433,7 +424,10 @@ class _LoginCard extends StatelessWidget {
             ),
             TextFormField(
               controller: emailCtrl,
-              autofillHints: const [AutofillHints.email, AutofillHints.username],
+              autofillHints: const [
+                AutofillHints.email,
+                AutofillHints.username,
+              ],
               keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.next,
               style: theme.textTheme.bodyLarge,
@@ -462,8 +456,7 @@ class _LoginCard extends StatelessWidget {
               decoration: InputDecoration(
                 labelText: 'Contraseña',
                 hintText: '••••••••',
-                prefixIcon:
-                    const Icon(Icons.lock_outline_rounded, size: 18),
+                prefixIcon: const Icon(Icons.lock_outline_rounded, size: 18),
                 suffixIcon: IconButton(
                   onPressed: onToggleObscure,
                   splashRadius: 18,
@@ -506,10 +499,15 @@ class _LoginCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Divider(color: AppColors.hairline, height: 32),
+            const _ServerRow(),
+            const SizedBox(height: 12),
             Row(
               children: [
-                Icon(Icons.support_agent_rounded,
-                    size: 16, color: AppColors.textTertiary),
+                Icon(
+                  Icons.support_agent_rounded,
+                  size: 16,
+                  color: AppColors.textTertiary,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -524,6 +522,38 @@ class _LoginCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Muestra el servidor configurado y abre el formulario para cambiarlo.
+/// Visible desde el arranque (sin sesión) para entornos de red local.
+class _ServerRow extends ConsumerWidget {
+  const _ServerRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final baseUrl = ref.watch(serverConfigProvider);
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(Icons.dns_outlined, size: 16, color: AppColors.textTertiary),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            baseUrl,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: AppColors.textTertiary,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        TextButton(
+          onPressed: () => showServerConfigSheet(context),
+          child: const Text('Cambiar servidor'),
+        ),
+      ],
     );
   }
 }
@@ -548,16 +578,15 @@ class _ErrorBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.error_outline_rounded,
-              size: 16, color: AppColors.danger),
+          Icon(Icons.error_outline_rounded, size: 16, color: AppColors.danger),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               message,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.textPrimary,
-                    height: 1.5,
-                  ),
+                color: AppColors.textPrimary,
+                height: 1.5,
+              ),
             ),
           ),
         ],
@@ -615,8 +644,10 @@ class _FloatingBrandPill extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.accent.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(99),

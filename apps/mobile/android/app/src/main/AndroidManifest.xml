@@ -1,8 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Red en builds de release: el API puede vivir en un servidor de área
+         local accesible solo por http://<ip-lan>, así que se permite tráfico
+         cleartext también fuera de debug. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="dems_mobile"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

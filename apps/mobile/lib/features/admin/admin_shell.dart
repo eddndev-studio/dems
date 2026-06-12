@@ -6,6 +6,7 @@ import '../../shared/theme/app_colors.dart';
 import '../../shared/theme/app_motion.dart';
 import '../../shared/widgets/mesh_backdrop.dart';
 import '../auth/application/auth_controller.dart';
+import '../settings/server_config_sheet.dart';
 
 /// Sections rendered inside the admin shell. The shell owns the responsive
 /// chrome (drawer / rail / extended rail); each section is a routed body.
@@ -67,9 +68,9 @@ class AdminShell extends ConsumerWidget {
                     Navigator.of(context).pop();
                     context.go(s.path);
                   },
-                  onLogout: () => ref
-                      .read(authControllerProvider.notifier)
-                      .logout(),
+                  onLogout: () =>
+                      ref.read(authControllerProvider.notifier).logout(),
+                  onConfigureServer: () => showServerConfigSheet(context),
                 )
               : null,
           appBar: isMobile
@@ -93,9 +94,9 @@ class AdminShell extends ConsumerWidget {
                         fullName: user?.fullName ?? 'Admin',
                         email: user?.email ?? '',
                         onSelect: (s) => context.go(s.path),
-                        onLogout: () => ref
-                            .read(authControllerProvider.notifier)
-                            .logout(),
+                        onLogout: () =>
+                            ref.read(authControllerProvider.notifier).logout(),
+                        onConfigureServer: () => showServerConfigSheet(context),
                       ),
                     Expanded(child: child),
                   ],
@@ -121,6 +122,7 @@ class _AdminRail extends StatelessWidget {
     required this.email,
     required this.onSelect,
     required this.onLogout,
+    required this.onConfigureServer,
   });
 
   final AdminSection current;
@@ -129,6 +131,7 @@ class _AdminRail extends StatelessWidget {
   final String email;
   final void Function(AdminSection) onSelect;
   final VoidCallback onLogout;
+  final VoidCallback onConfigureServer;
 
   @override
   Widget build(BuildContext context) {
@@ -137,25 +140,27 @@ class _AdminRail extends StatelessWidget {
       width: width,
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 12),
       decoration: BoxDecoration(
-        border: Border(
-          right: BorderSide(color: AppColors.hairline),
-        ),
+        border: Border(right: BorderSide(color: AppColors.hairline)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _BrandPill(label: extended ? 'DEMS · Admin' : null),
           const SizedBox(height: 28),
-          ...AdminSection.values.map((s) => Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: _RailItem(
-                  section: s,
-                  selected: s == current,
-                  extended: extended,
-                  onTap: () => onSelect(s),
-                ),
-              )),
+          ...AdminSection.values.map(
+            (s) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: _RailItem(
+                section: s,
+                selected: s == current,
+                extended: extended,
+                onTap: () => onSelect(s),
+              ),
+            ),
+          ),
           const Spacer(),
+          _ServerTile(extended: extended, onTap: onConfigureServer),
+          const SizedBox(height: 8),
           _AccountTile(
             fullName: fullName,
             email: email,
@@ -192,10 +197,10 @@ class _RailItemState extends State<_RailItem> {
   Widget build(BuildContext context) {
     final selected = widget.selected;
     final bgAlpha = selected ? 0.10 : (_hover ? 0.05 : 0.0);
-    final iconColor =
-        selected ? AppColors.accent : AppColors.textSecondary;
-    final textColor =
-        selected ? AppColors.textPrimary : AppColors.textSecondary;
+    final iconColor = selected ? AppColors.accent : AppColors.textSecondary;
+    final textColor = selected
+        ? AppColors.textPrimary
+        : AppColors.textSecondary;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -232,9 +237,63 @@ class _RailItemState extends State<_RailItem> {
                     widget.section.label,
                     style: TextStyle(
                       fontSize: 13.5,
-                      fontWeight:
-                          selected ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                       color: textColor,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Acceso a la configuración del servidor (IP/esquema) desde el panel.
+class _ServerTile extends StatelessWidget {
+  const _ServerTile({required this.extended, required this.onTap});
+
+  final bool extended;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Configurar servidor',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: extended ? 14 : 0,
+            vertical: 12,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.transparent),
+          ),
+          child: Row(
+            mainAxisAlignment: extended
+                ? MainAxisAlignment.start
+                : MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.dns_outlined,
+                size: 20,
+                color: AppColors.textSecondary,
+              ),
+              if (extended) ...[
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    'Servidor',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textSecondary,
                       letterSpacing: 0.1,
                     ),
                   ),
@@ -355,6 +414,7 @@ class _AdminDrawer extends StatelessWidget {
     required this.email,
     required this.onSelect,
     required this.onLogout,
+    required this.onConfigureServer,
   });
 
   final AdminSection current;
@@ -362,6 +422,7 @@ class _AdminDrawer extends StatelessWidget {
   final String email;
   final void Function(AdminSection) onSelect;
   final VoidCallback onLogout;
+  final VoidCallback onConfigureServer;
 
   @override
   Widget build(BuildContext context) {
@@ -376,16 +437,26 @@ class _AdminDrawer extends StatelessWidget {
             children: [
               const _BrandPill(label: 'DEMS · Admin'),
               const SizedBox(height: 28),
-              ...AdminSection.values.map((s) => Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: _RailItem(
-                      section: s,
-                      selected: s == current,
-                      extended: true,
-                      onTap: () => onSelect(s),
-                    ),
-                  )),
+              ...AdminSection.values.map(
+                (s) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: _RailItem(
+                    section: s,
+                    selected: s == current,
+                    extended: true,
+                    onTap: () => onSelect(s),
+                  ),
+                ),
+              ),
               const Spacer(),
+              _ServerTile(
+                extended: true,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  onConfigureServer();
+                },
+              ),
+              const SizedBox(height: 8),
               _AccountTile(
                 fullName: fullName,
                 email: email,
@@ -444,7 +515,9 @@ class _BrandPill extends StatelessWidget {
 
 String _initialsFrom(String name) {
   final parts = name.trim().split(RegExp(r'\s+'));
-  final letters =
-      parts.take(2).map((p) => p.isEmpty ? '' : p[0].toUpperCase()).join();
+  final letters = parts
+      .take(2)
+      .map((p) => p.isEmpty ? '' : p[0].toUpperCase())
+      .join();
   return letters.isEmpty ? '·' : letters;
 }
