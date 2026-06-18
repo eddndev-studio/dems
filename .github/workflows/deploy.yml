@@ -1,0 +1,108 @@
+name: deploy-api
+
+# Despliega el API en PRODUCCIÓN (VPS2) por SSH.
+#
+# DISPARADORES
+#   - workflow_dispatch          -> despliegue manual (botón "Run workflow").
+#   - workflow_run (ci en main)  -> auto-despliegue SÓLO si el CI de un push a
+#                                   main pasó.
+#
+# SECRETS  (repo → Settings → Secrets and variables → Actions):
+#   VPS2_HOST         host o IP del servidor          (ej. 203.0.113.10)   [req]
+#   VPS2_USER         usuario SSH                      (ej. deploy)         [req]
+#   VPS2_SSH_KEY      clave PRIVADA SSH (PEM) del usuario                   [req]
+#   VPS2_FINGERPRINT  SHA256 del host para verificarlo (anti-MITM)         [req]
+#                     Obtén con:  ssh-keyscan -t ed25519 <host> | ssh-keygen -lf -
+#   VPS2_PORT         puerto SSH                       (default 22)         [opc]
+#
+# Sin VPS2_HOST/USER/SSH_KEY el job se SALTA solo (no falla). Si están esos pero
+# falta VPS2_FINGERPRINT, el job FALLA a propósito (no se despliega sin verificar
+# el host). AJUSTA el bloque "script:" a tu runtime real (Compose o binario).
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+    branches: [main]
+
+# Un despliegue a la vez; no cancelar uno en curso a mitad.
+concurrency:
+  group: deploy-api-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: deploy API → VPS2
+    runs-on: ubuntu-latest
+    # Manual: siempre. Auto: sólo si el CI de un push a main pasó.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    env:
+      # Espejo de PRESENCIA de secrets (no expone valores; sólo booleanos).
+      HAS_DEPLOY_CFG: ${{ secrets.VPS2_SSH_KEY != '' && secrets.VPS2_HOST != '' && secrets.VPS2_USER != '' }}
+      HAS_FINGERPRINT: ${{ secrets.VPS2_FINGERPRINT != '' }}
+    steps:
+      - name: Gate — sin config de despliegue, saltar
+        if: env.HAS_DEPLOY_CFG != 'true'
+        run: |
+          echo "::warning title=Despliegue saltado::Faltan secrets de SSH (VPS2_HOST/VPS2_USER/VPS2_SSH_KEY). Añádelos para activar el despliegue."
+
+      - name: Exigir verificación de host (anti-MITM)
+        if: env.HAS_DEPLOY_CFG == 'true' && env.HAS_FINGERPRINT != 'true'
+        run: |
+          echo "::error title=Falta VPS2_FINGERPRINT::Define VPS2_FINGERPRINT (SHA256 del host) para verificar el servidor y evitar MITM. Obtén con: ssh-keyscan -t ed25519 <host> | ssh-keygen -lf -"
+          exit 1
+
+      - name: Desplegar por SSH
+        if: env.HAS_DEPLOY_CFG == 'true'
+        # Pineado a SHA (esta action recibe la clave privada): v1.2.0.
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17
+        with:
+          host: ${{ secrets.VPS2_HOST }}
+          username: ${{ secrets.VPS2_USER }}
+          key: ${{ secrets.VPS2_SSH_KEY }}
+          port: ${{ secrets.VPS2_PORT || '22' }}
+          fingerprint: ${{ secrets.VPS2_FINGERPRINT }}
+          script_stop: true
+          command_timeout: 40m
+          script: |
+            set -euo pipefail
+            cd /opt/dems
+
+            # 1) Traer el código nuevo de main.
+            #    (Ajusta si /opt/dems NO es un checkout git.)
+            git fetch --prune origin
+            git checkout main
+            git reset --hard origin/main   # .env de prod está gitignored: no se toca
+
+            # 2) RECONSTRUIR + REINICIAR — elige tu runtime:
+            #
+            #  (A) Docker Compose  [activo por defecto — prod usa compose en /opt/dems]
+            docker compose up -d --build
+            docker compose ps
+            #
+            #  (B) Binario nativo  [descomenta y borra (A) si prod corre el binario;
+            #      auto-aplica migraciones al arrancar]
+            #    curl -fsSL -o /tmp/dems-api.tgz \
+            #      https://github.com/eddndev-studio/dems/releases/latest/download/dems-api-linux-x64.tar.gz
+            #    install -d /opt/dems/bin
+            #    tar -xzf /tmp/dems-api.tgz -C /opt/dems/bin
+            #    sudo systemctl restart dems-api
+            #    systemctl --no-pager status dems-api | head -n 5
+
+            # 3) Smoke check con reintento (el API tarda en arrancar: build +
+            #    migraciones + conexión a DB pueden superar unos segundos).
+            ok=
+            for _ in $(seq 1 30); do
+              if curl -fsS http://localhost:8080/healthz >/dev/null; then
+                ok=1; echo "  OK healthz"; break
+              fi
+              sleep 2
+            done
+            [ "${ok:-}" = 1 ] || { echo "::error::healthz no respondió tras ~60s — revisa 'docker compose logs'"; exit 1; }
