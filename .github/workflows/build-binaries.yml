@@ -68,7 +68,10 @@ jobs:
 
   linux:
     name: API binary (Linux x64)
-    runs-on: [self-hosted, vps2]
+    # GitHub-hosted: el runner self-hosted no tiene rustup fiable
+    # (/home/github-runner/.cargo/bin/rustup ausente -> exit 127), igual que
+    # el de Windows ya migró a windows-latest.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 

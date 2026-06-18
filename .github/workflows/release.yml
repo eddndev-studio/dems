@@ -42,8 +42,6 @@ concurrency:
 
 env:
   API_BASE_URL: https://dems.eddndev.work
-  ANDROID_SDK_ROOT: /opt/android-sdk
-  ANDROID_HOME: /opt/android-sdk
   # Espejo de los secrets a env para poder usarlos en `if:` (el contexto secrets
   # no está disponible en condicionales; env sí).
   ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -51,7 +49,9 @@ env:
 jobs:
   build:
     name: build release (android + web)
-    runs-on: [self-hosted, vps2]
+    # GitHub-hosted: el self-hosted cancelaba el build de APK por contención;
+    # ubuntu-latest trae el Android SDK preinstalado (ANDROID_HOME ya seteado).
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/mobile
@@ -64,9 +64,6 @@ jobs:
           flutter-version: '3.38.5'
           channel: 'stable'
           cache: true
-
-      - name: Apuntar Flutter al SDK de Android del runner
-        run: flutter config --android-sdk "$ANDROID_SDK_ROOT"
 
       - name: Materializar keystore Android (si hay secrets)
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
