@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use axum::extract::State;
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -12,6 +14,13 @@ use crate::error::{ApiError, ApiResult};
 use crate::extractors::CurrentUser;
 use crate::password;
 use crate::state::AppState;
+
+/// Hash argon2 dummy fijo (computado una vez por proceso). Cuando el email no
+/// existe verificamos la contraseña contra este hash para que el tiempo de
+/// respuesta sea indistinguible del caso "email válido, contraseña errónea" y
+/// no se pueda enumerar usuarios por timing.
+static DUMMY_PASSWORD_HASH: LazyLock<String> =
+    LazyLock::new(|| password::hash("dummy-password-for-timing-equalization").expect("dummy hash"));
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct LoginRequest {
@@ -54,8 +63,8 @@ pub async fn login(
     req.validate()
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
-    let row = sqlx::query_as::<_, (Uuid, String, String, UserRole, String, bool)>(
-        r#"SELECT id, email, full_name, role, password_hash, is_active
+    let row = sqlx::query_as::<_, (Uuid, String, String, UserRole, String, bool, i32)>(
+        r#"SELECT id, email, full_name, role, password_hash, is_active, token_version
            FROM users WHERE email = $1"#,
     )
     .bind(&req.email)
@@ -63,7 +72,12 @@ pub async fn login(
     .await
     .map_err(|e| ApiError::Internal(e.into()))?;
 
-    let Some((id, email, full_name, role, password_hash, is_active)) = row else {
+    let Some((id, email, full_name, role, password_hash, is_active, token_version)) = row else {
+        // El email no existe. Corremos un verify contra un hash dummy fijo para
+        // igualar el tiempo de respuesta del camino "email existe pero password
+        // incorrecta": así un atacante no distingue ambos casos por timing (no
+        // puede enumerar emails registrados).
+        let _ = password::verify(&req.password, &DUMMY_PASSWORD_HASH);
         return Err(ApiError::Core(dems_core::CoreError::Unauthorized));
     };
     if !is_active {
@@ -80,6 +94,7 @@ pub async fn login(
         role,
         state.cfg.jwt_access_ttl_secs,
         TokenKind::Access,
+        token_version,
     )
     .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
     let refresh_token = auth::issue(
@@ -88,6 +103,7 @@ pub async fn login(
         role,
         state.cfg.jwt_refresh_ttl_secs,
         TokenKind::Refresh,
+        token_version,
     )
     .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
 
@@ -156,15 +172,22 @@ pub async fn refresh(
     )
     .map_err(|_| ApiError::Core(dems_core::CoreError::Unauthorized))?;
 
-    // Confirmamos que el usuario sigue activo: un admin que desactiva a
-    // un jurado debe cortarle la renovación de tokens.
-    let is_active = sqlx::query_scalar::<_, bool>(r#"SELECT is_active FROM users WHERE id = $1"#)
-        .bind(claims.sub)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(|e| ApiError::Internal(e.into()))?;
+    // Confirmamos que el usuario sigue activo y que el token no fue revocado.
+    // Un admin que desactiva a un jurado (o le resetea la contraseña) incrementa
+    // users.token_version: el refresh viejo lleva la versión anterior en su
+    // claim, así que deja de servir.
+    let row = sqlx::query_as::<_, (bool, i32)>(
+        r#"SELECT is_active, token_version FROM users WHERE id = $1"#,
+    )
+    .bind(claims.sub)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
 
-    if is_active != Some(true) {
+    let Some((is_active, token_version)) = row else {
+        return Err(ApiError::Core(dems_core::CoreError::Unauthorized));
+    };
+    if !is_active || claims.token_version != token_version {
         return Err(ApiError::Core(dems_core::CoreError::Unauthorized));
     }
 
@@ -174,15 +197,22 @@ pub async fn refresh(
         claims.role,
         state.cfg.jwt_access_ttl_secs,
         TokenKind::Access,
+        token_version,
     )
     .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
-    // Rotamos también el refresh: limita el impacto si un refresh se filtra.
+    // Rotamos también el refresh por higiene (el cliente reemplaza su token en
+    // cada renovación). Esto NO mitiga un robo por sí solo: sin denylist, el
+    // refresh viejo sigue siendo válido hasta su exp. La revocación real es por
+    // `token_version`: un reset de contraseña o una desactivación lo incrementan
+    // y cortan TANTO el access (vía el extractor CurrentUser) COMO el refresh
+    // (vía el check de arriba).
     let refresh_token = auth::issue(
         &state.cfg.jwt_secret,
         claims.sub,
         claims.role,
         state.cfg.jwt_refresh_ttl_secs,
         TokenKind::Refresh,
+        token_version,
     )
     .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
 

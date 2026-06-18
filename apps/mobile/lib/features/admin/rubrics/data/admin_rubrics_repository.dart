@@ -38,6 +38,7 @@ class AdminRubricsRepository {
     required String nombre,
     required RubricType tipo,
     String? descripcion,
+    int? peso,
     required List<String> categorias,
     required List<Map<String, dynamic>> sections,
   }) async {
@@ -50,6 +51,8 @@ class AdminRubricsRepository {
           'tipo': tipo.apiValue,
           if (descripcion != null && descripcion.isNotEmpty)
             'descripcion': descripcion,
+          // El backend default es 100 si se omite; lo mandamos explícito.
+          'peso': ?peso,
           'categorias': categorias,
           'sections': sections,
         },
@@ -99,12 +102,15 @@ class AdminRubricsRepository {
     String? nombre,
     String? descripcion,
     bool? activo,
+    int? peso,
   }) async {
     try {
       final body = <String, dynamic>{};
       if (nombre != null) body['nombre'] = nombre;
       if (descripcion != null) body['descripcion'] = descripcion;
       if (activo != null) body['activo'] = activo;
+      // COALESCE en el backend: omitir = no tocar el peso existente.
+      if (peso != null) body['peso'] = peso;
       final response = await _dio.patch<Map<String, dynamic>>(
         '/admin/rubric-templates/$id',
         data: body,

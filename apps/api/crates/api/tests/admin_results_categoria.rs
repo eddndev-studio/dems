@@ -288,6 +288,48 @@ async fn filters_by_rubric_type(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn excludes_inactive_rubric_evaluaciones(pool: PgPool) {
+    // #19: una evaluación contra una rúbrica del mismo tipo pero INACTIVA (una
+    // versión vieja de la rúbrica) no debe contar en el ranking — evita mezclar
+    // versiones de rúbrica.
+    let (_, tok) = admin(&pool).await;
+    let e = seed_edition(&pool, 2024).await;
+    let cat = seed_categoria(&pool, "soft", "Software").await;
+    // Rúbrica activa (la vigente) y rúbrica inactiva (versión vieja).
+    let r_active = seed_rubric_template(&pool, e, "R-active", "exhibicion").await;
+    let r_old = seed_rubric_template(&pool, e, "R-old", "exhibicion").await;
+    sqlx::query("UPDATE rubric_templates SET activo = false WHERE id = $1")
+        .bind(r_old)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (_, c_active) = seed_section_with_criterion(&pool, r_active, 1, "C", 3).await;
+    let (_, c_old) = seed_section_with_criterion(&pool, r_old, 1, "C", 3).await;
+
+    let p = insert_prototipo(&pool, e, "F", "P").await;
+    attach_categoria(&pool, p, cat).await;
+    let j1 = insert_user(&pool, "j1@x.mx", "J1", "jurado", "pw", true).await;
+    let j2 = insert_user(&pool, "j2@x.mx", "J2", "jurado", "pw", true).await;
+
+    // j1 evalúa contra la activa (cuenta), j2 contra la inactiva (NO cuenta).
+    seed_submitted_evaluacion(&pool, p, j1, r_active, &[(c_active, 3)]).await;
+    seed_submitted_evaluacion(&pool, p, j2, r_old, &[(c_old, 1)]).await;
+
+    let (status, body) = get(
+        pool,
+        &format!("/admin/results/categoria/soft?edition_id={e}"),
+        Some(&tok),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let protos = body["prototipos"].as_array().unwrap();
+    assert_eq!(protos.len(), 1);
+    // Sólo cuenta la evaluación contra la rúbrica activa.
+    assert_eq!(protos[0]["n_jurados"], 1);
+    assert_eq!(protos[0]["promedio"], 3.0);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn excludes_other_editions(pool: PgPool) {
     let (_, tok) = admin(&pool).await;
     let e_now = seed_edition(&pool, 2024).await;

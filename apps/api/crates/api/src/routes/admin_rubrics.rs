@@ -27,6 +27,9 @@ pub struct RubricTemplateView {
     pub tipo: RubricType,
     pub descripcion: Option<String>,
     pub activo: bool,
+    /// Peso porcentual (0..100) de esta rúbrica en el puntaje final combinado
+    /// del prototipo.
+    pub peso: i32,
     /// `true` si la edición está en fase `preparacion`: la estructura puede
     /// editarse. `false` cuando la edición ya entró en evaluación/cerrada.
     pub editable: bool,
@@ -63,6 +66,10 @@ pub struct CreateRubricRequest {
     pub nombre: String,
     pub tipo: RubricType,
     pub descripcion: Option<String>,
+    /// Peso porcentual (0..100). Default 100 si se omite.
+    #[serde(default)]
+    #[validate(range(min = 0, max = 100))]
+    pub peso: Option<i32>,
     #[serde(default)]
     pub categorias: Vec<Uuid>,
     #[serde(default)]
@@ -155,14 +162,15 @@ pub async fn create(
     let template_id = Uuid::new_v4();
     sqlx::query(
         r#"INSERT INTO rubric_templates
-               (id, edition_id, nombre, tipo, descripcion, activo)
-           VALUES ($1, $2, $3, $4::rubric_type, $5, true)"#,
+               (id, edition_id, nombre, tipo, descripcion, activo, peso)
+           VALUES ($1, $2, $3, $4::rubric_type, $5, true, $6)"#,
     )
     .bind(template_id)
     .bind(req.edition_id)
     .bind(&req.nombre)
     .bind(tipo_as_sql(req.tipo))
     .bind(&req.descripcion)
+    .bind(req.peso.unwrap_or(100))
     .execute(&mut *tx)
     .await
     .map_err(|e| classify_integrity(e, "edition_id unknown"))?;
@@ -301,6 +309,8 @@ pub struct RubricTemplateSummary {
     pub tipo: RubricType,
     pub descripcion: Option<String>,
     pub activo: bool,
+    /// Peso porcentual (0..100) de esta rúbrica en el puntaje final combinado.
+    pub peso: i32,
     /// `true` si la edición está en fase `preparacion` (estructura editable).
     pub editable: bool,
     pub section_count: i64,
@@ -333,6 +343,7 @@ pub async fn list(
             t.tipo,
             t.descripcion,
             t.activo,
+            t.peso,
             (e.phase = 'preparacion') AS editable,
             (SELECT COUNT(*) FROM rubric_sections s WHERE s.template_id = t.id) AS section_count,
             (SELECT COUNT(*) FROM rubric_criteria c
@@ -393,10 +404,11 @@ pub(crate) async fn load_tree(state: &AppState, id: Uuid) -> ApiResult<RubricTem
             RubricType,
             Option<String>,
             bool,
+            i32,
             EditionPhase,
         ),
     >(
-        r#"SELECT t.id, t.edition_id, t.nombre, t.tipo, t.descripcion, t.activo, e.phase
+        r#"SELECT t.id, t.edition_id, t.nombre, t.tipo, t.descripcion, t.activo, t.peso, e.phase
                FROM rubric_templates t
                JOIN editions e ON e.id = t.edition_id
                WHERE t.id = $1"#,
@@ -469,7 +481,7 @@ pub(crate) async fn load_tree(state: &AppState, id: Uuid) -> ApiResult<RubricTem
         })
         .collect();
 
-    let (tid, edition_id, nombre, tipo, descripcion, activo, phase) = template;
+    let (tid, edition_id, nombre, tipo, descripcion, activo, peso, phase) = template;
     Ok(RubricTemplateView {
         id: tid,
         edition_id,
@@ -477,6 +489,7 @@ pub(crate) async fn load_tree(state: &AppState, id: Uuid) -> ApiResult<RubricTem
         tipo,
         descripcion,
         activo,
+        peso,
         editable: phase == EditionPhase::Preparacion,
         categorias,
         sections,
@@ -493,6 +506,10 @@ pub struct PatchRubricRequest {
     pub nombre: Option<String>,
     pub descripcion: Option<String>,
     pub activo: Option<bool>,
+    /// Peso porcentual (0..100). Si se omite, no se toca.
+    #[serde(default)]
+    #[validate(range(min = 0, max = 100))]
+    pub peso: Option<i32>,
 }
 
 #[utoipa::path(
@@ -524,13 +541,15 @@ pub async fn patch(
         r#"UPDATE rubric_templates
            SET nombre = COALESCE($2, nombre),
                descripcion = COALESCE($3, descripcion),
-               activo = COALESCE($4, activo)
+               activo = COALESCE($4, activo),
+               peso = COALESCE($5, peso)
            WHERE id = $1"#,
     )
     .bind(id)
     .bind(&req.nombre)
     .bind(&req.descripcion)
     .bind(req.activo)
+    .bind(req.peso)
     .execute(&state.pool)
     .await
     .map_err(|e| ApiError::Internal(e.into()))?;

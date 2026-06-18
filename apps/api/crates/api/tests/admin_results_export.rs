@@ -233,6 +233,38 @@ async fn quotes_fields_with_commas_or_quotes(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn guards_against_csv_formula_injection(pool: PgPool) {
+    // #15: una celda que empieza con =,+,-,@ podría ejecutarse como fórmula al
+    // abrir el CSV en una hoja de cálculo. Debe prefijarse con un apóstrofo.
+    let (_, tok) = admin(&pool).await;
+    let e = seed_edition(&pool, 2024).await;
+    let cat = seed_categoria(&pool, "soft", "Software").await;
+    let _ = seed_rubric_template(&pool, e, "R", "exhibicion").await;
+    // Nombre del prototipo malicioso: empieza con '='.
+    let p = insert_prototipo(&pool, e, "F", "=SUM(A1:A9)").await;
+    attach_categoria(&pool, p, cat).await;
+
+    let (status, _, body) = get(
+        pool,
+        &format!("/admin/results/edition/{e}/export.csv"),
+        Some(&tok),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    // La celda debe quedar neutralizada con un apóstrofo inicial. No contiene
+    // coma/comilla, así que no se quota: queda '=SUM(A1:A9).
+    assert!(
+        body.contains(",'=SUM(A1:A9),"),
+        "formula not neutralized: {body}"
+    );
+    // No debe aparecer la fórmula cruda en inicio de celda (sin apóstrofo).
+    assert!(
+        !body.contains(",=SUM(A1:A9),"),
+        "raw formula leaked: {body}"
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn filters_by_rubric_type(pool: PgPool) {
     let (_, tok) = admin(&pool).await;
     let e = seed_edition(&pool, 2024).await;

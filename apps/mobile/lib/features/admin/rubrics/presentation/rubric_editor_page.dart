@@ -37,6 +37,7 @@ class RubricEditorPage extends ConsumerStatefulWidget {
 class _RubricEditorPageState extends ConsumerState<RubricEditorPage> {
   late final TextEditingController _nombre;
   late final TextEditingController _descripcion;
+  late final TextEditingController _peso;
   late RubricType _tipo;
   String? _editionId;
   final Set<String> _categorias = {};
@@ -53,6 +54,8 @@ class _RubricEditorPageState extends ConsumerState<RubricEditorPage> {
     final r = widget.initial;
     _nombre = TextEditingController(text: r?.nombre ?? '');
     _descripcion = TextEditingController(text: r?.descripcion ?? '');
+    // Peso de la plantilla (0..100). Default 100 en creación.
+    _peso = TextEditingController(text: (r?.peso ?? 100).toString());
     _tipo = r?.tipo ?? RubricType.exhibicion;
     _editionId = r?.editionId;
     if (r != null) {
@@ -67,11 +70,15 @@ class _RubricEditorPageState extends ConsumerState<RubricEditorPage> {
   void dispose() {
     _nombre.dispose();
     _descripcion.dispose();
+    _peso.dispose();
     for (final s in _sections) {
       s.dispose();
     }
     super.dispose();
   }
+
+  /// Peso de la plantilla parseado, o null si el campo está vacío.
+  int? get _pesoValue => int.tryParse(_peso.text.trim());
 
   // ── Mutations ───────────────────────────────────────────────────────────
 
@@ -120,6 +127,10 @@ class _RubricEditorPageState extends ConsumerState<RubricEditorPage> {
   String? _validate() {
     if (_nombre.text.trim().isEmpty) return 'El nombre es obligatorio.';
     if (!_isEdit && _editionId == null) return 'Selecciona una edición.';
+    final peso = _pesoValue;
+    if (peso == null || peso < 0 || peso > 100) {
+      return 'El peso debe ser un entero entre 0 y 100.';
+    }
     for (final s in _sections) {
       if (s.nombre.text.trim().isEmpty) {
         return 'Cada sección necesita un nombre.';
@@ -180,13 +191,17 @@ class _RubricEditorPageState extends ConsumerState<RubricEditorPage> {
     try {
       if (_isEdit) {
         final r = widget.initial!;
-        // Metadata (nombre/descripcion) viaja por PATCH; el tipo es inmutable.
+        // Metadata (nombre/descripcion/peso) viaja por PATCH; el tipo es
+        // inmutable. Sólo enviamos los campos que cambiaron.
+        final pesoChanged = _pesoValue != r.peso;
         if (_nombre.text.trim() != r.nombre ||
-            (_descripcion.text.trim()) != (r.descripcion ?? '')) {
+            (_descripcion.text.trim()) != (r.descripcion ?? '') ||
+            pesoChanged) {
           await ref.read(adminRubricsRepositoryProvider).patch(
                 r.id,
                 nombre: _nombre.text.trim(),
                 descripcion: _descripcion.text.trim(),
+                peso: pesoChanged ? _pesoValue : null,
               );
         }
         await ctrl.saveStructure(r.id,
@@ -197,6 +212,7 @@ class _RubricEditorPageState extends ConsumerState<RubricEditorPage> {
           nombre: _nombre.text.trim(),
           tipo: _tipo,
           descripcion: _descripcion.text.trim(),
+          peso: _pesoValue,
           categorias: categorias,
           sections: sections,
         );
@@ -242,6 +258,7 @@ class _RubricEditorPageState extends ConsumerState<RubricEditorPage> {
               _MetaCard(
                 nombre: _nombre,
                 descripcion: _descripcion,
+                peso: _peso,
                 tipo: _tipo,
                 onTipo: _isEdit ? null : (t) => setState(() => _tipo = t),
                 isEdit: _isEdit,
@@ -376,6 +393,7 @@ class _MetaCard extends StatelessWidget {
   const _MetaCard({
     required this.nombre,
     required this.descripcion,
+    required this.peso,
     required this.tipo,
     required this.onTipo,
     required this.isEdit,
@@ -386,6 +404,7 @@ class _MetaCard extends StatelessWidget {
 
   final TextEditingController nombre;
   final TextEditingController descripcion;
+  final TextEditingController peso;
   final RubricType tipo;
   final ValueChanged<RubricType>? onTipo;
   final bool isEdit;
@@ -414,6 +433,22 @@ class _MetaCard extends StatelessWidget {
               controller: descripcion,
               maxLines: 2,
               decoration: _decoration(hint: 'Notas internas para el jurado…'),
+            ),
+          ),
+          const SizedBox(height: 14),
+          _Labeled(
+            label: 'Peso (% del puntaje final combinado, 0–100)',
+            child: SizedBox(
+              width: 140,
+              child: TextField(
+                controller: peso,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(3),
+                ],
+                decoration: _decoration(hint: '100'),
+              ),
             ),
           ),
           const SizedBox(height: 14),

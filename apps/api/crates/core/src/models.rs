@@ -94,6 +94,8 @@ pub struct RubricTemplate {
     pub tipo: RubricType,
     pub descripcion: Option<String>,
     pub activo: bool,
+    /// Peso porcentual (0..100) de esta rúbrica en el puntaje final combinado.
+    pub peso: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

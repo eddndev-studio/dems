@@ -10,7 +10,9 @@ use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use common::{build_app, insert_user, token_for};
+use serde_json::json;
+
+use common::{admin, build_app, insert_user, token_for};
 use dems_api::auth::TokenKind;
 use dems_core::models::UserRole;
 
@@ -80,4 +82,41 @@ async fn me_rejects_token_for_deactivated_user(pool: PgPool) {
 
     let (status, _) = get_me(pool, Some(&tok)).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn me_rejects_access_token_after_password_reset(pool: PgPool) {
+    // #9: el access token se revoca DE INMEDIATO al resetear la contraseña.
+    // token_for emite con token_version 0; el reset lo lleva a 1, así que el
+    // claim viejo deja de coincidir y el extractor responde 401 sin esperar el
+    // TTL ni un refresh.
+    let (_, atok) = admin(&pool).await;
+    let uid = insert_user(&pool, "j@x.mx", "J", "jurado", "pw12345678", true).await;
+    let old_access = token_for(uid, UserRole::Jurado, 900, TokenKind::Access);
+
+    // Sanity: antes del reset el access token sirve.
+    let (before, _) = get_me(pool.clone(), Some(&old_access)).await;
+    assert_eq!(before, StatusCode::OK);
+
+    // Admin resetea la contraseña → token_version pasa a 1.
+    let app = build_app(pool.clone());
+    let reset = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/admin/users/{uid}/password"))
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {atok}"))
+                .body(Body::from(
+                    json!({ "password": "nuevapass123" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(reset.status(), StatusCode::NO_CONTENT);
+
+    // El access token viejo ya no vale.
+    let (after, _) = get_me(pool, Some(&old_access)).await;
+    assert_eq!(after, StatusCode::UNAUTHORIZED);
 }

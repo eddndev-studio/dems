@@ -75,5 +75,25 @@ void main() {
     await tester.tap(find.text('Agregar criterio'));
     await tester.pumpAndSettle();
     expect(find.text('Máx total: 3'), findsOneWidget);
+
+    // #20: el campo de peso de la plantilla aparece con su default 100.
+    expect(
+      find.textContaining('Peso (% del puntaje final combinado'),
+      findsOneWidget,
+    );
+    // El TextField del peso muestra el valor por defecto "100".
+    final pesoEditable = find.descendant(
+      of: find.ancestor(
+        of: find.textContaining('Peso (% del puntaje final combinado'),
+        matching: find.byType(Column),
+      ),
+      matching: find.byType(EditableText),
+    );
+    expect(
+      tester.widgetList<EditableText>(pesoEditable).any(
+            (e) => e.controller.text == '100',
+          ),
+      isTrue,
+    );
   });
 }

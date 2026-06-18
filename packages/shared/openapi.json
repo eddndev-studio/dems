@@ -792,6 +792,51 @@
         ]
       }
     },
+    "/admin/results/edition/{id}/final": {
+      "get": {
+        "tags": [
+          "admin/results"
+        ],
+        "summary": "Puntaje final combinado por prototipo de una edición.",
+        "description": "Para cada prototipo: `puntaje_final = Σ_tipo (promedio_tipo / max_total_tipo)\n* (peso_tipo / 100)`, considerando SÓLO la rúbrica ACTIVA de cada tipo. El\npromedio_tipo es la media de los `total` (suma de scores) de las\nevaluaciones ya `submitted_at` contra esa rúbrica. Si un tipo no tiene\nrúbrica activa o `max_total = 0`, su aporte es 0 (no NaN). El ranking se\nordena por `puntaje_final` descendente.",
+        "operationId": "final_ranking",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID de la edición",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ranking combinado ponderado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinalRankingView"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Sólo admin"
+          },
+          "404": {
+            "description": "Edición no encontrada"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/admin/rubric-templates": {
       "get": {
         "tags": [
@@ -1426,7 +1471,7 @@
             "description": "Jurado no asignado a (prototipo, template)"
           },
           "409": {
-            "description": "Evaluación ya existe para esa terna"
+            "description": "Conflicto. Body lleva `code`: `client_id_reused` (client_id de otra terna) o `edition_closed` (edición fuera de fase 'evaluacion'). El choque de unicidad de terna va sin `code`."
           },
           "422": {
             "description": "Score fuera de rango o criterio inválido"
@@ -1526,7 +1571,7 @@
             "description": "No encontrada"
           },
           "409": {
-            "description": "Ya enviada — no se puede editar"
+            "description": "Conflicto. Body lleva `code`: `already_submitted` (ya enviada — chequeado antes que la fase) o `edition_closed` (edición fuera de fase 'evaluacion')."
           },
           "422": {
             "description": "Body inválido"
@@ -1575,7 +1620,7 @@
             "description": "No encontrada"
           },
           "409": {
-            "description": "Ya enviada o algún criterio sin puntuar"
+            "description": "Conflicto. Body lleva `code`: `already_submitted` (ya enviada — chequeado antes que la fase), `edition_closed` (edición fuera de fase 'evaluacion') o `incomplete` (algún criterio sin puntuar)."
           }
         },
         "security": [
@@ -2033,6 +2078,14 @@
           "nombre": {
             "type": "string"
           },
+          "peso": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Peso porcentual (0..100). Default 100 si se omite."
+          },
           "sections": {
             "type": "array",
             "items": {
@@ -2278,6 +2331,95 @@
           }
         }
       },
+      "FinalBreakdownView": {
+        "type": "object",
+        "required": [
+          "rubric_type",
+          "peso",
+          "max_total",
+          "aporte"
+        ],
+        "properties": {
+          "aporte": {
+            "type": "number",
+            "format": "double",
+            "description": "Aporte ponderado de este tipo al `puntaje_final`:\n(promedio / max_total) * (peso / 100). 0 si max_total es 0."
+          },
+          "max_total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "peso": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "promedio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Promedio de los `total` de jurados (null si no hay evaluaciones)."
+          },
+          "rubric_type": {
+            "type": "string"
+          }
+        }
+      },
+      "FinalPrototipoView": {
+        "type": "object",
+        "required": [
+          "prototipo_id",
+          "folio",
+          "nombre",
+          "puntaje_final",
+          "desglose"
+        ],
+        "properties": {
+          "desglose": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FinalBreakdownView"
+            },
+            "description": "Desglose por tipo de rúbrica (exhibicion, memoria)."
+          },
+          "folio": {
+            "type": "string"
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "prototipo_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "puntaje_final": {
+            "type": "number",
+            "format": "double",
+            "description": "Σ_tipo (promedio_tipo / max_total_tipo) * (peso_tipo / 100), en 0..1."
+          }
+        }
+      },
+      "FinalRankingView": {
+        "type": "object",
+        "required": [
+          "edition_id",
+          "prototipos"
+        ],
+        "properties": {
+          "edition_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "prototipos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FinalPrototipoView"
+            },
+            "description": "Prototipos ordenados por `puntaje_final` descendente."
+          }
+        }
+      },
       "IntegranteInput": {
         "type": "object",
         "required": [
@@ -2418,7 +2560,7 @@
             "items": {
               "$ref": "#/components/schemas/ScoreInput"
             },
-            "description": "Opcional: si se envía, reemplaza TODAS las filas de score para los\ncriterion_id incluidos (upsert). No elimina scores de criterios no\nmencionados — ese es trabajo del cliente si el jurado lo desea."
+            "description": "Opcional. Si se envía, REEMPLAZA el set completo de scores: el cliente\nmanda siempre todas las filas que deben quedar. Las filas existentes\ncuyo criterion_id no aparezca en el payload se ELIMINAN del servidor\n(así un score que el jurado limpió desaparece), y las presentes se\nhacen upsert. Si es `None`, los scores no se tocan."
           }
         }
       },
@@ -2471,6 +2613,14 @@
               "string",
               "null"
             ]
+          },
+          "peso": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Peso porcentual (0..100). Si se omite, no se toca."
           }
         }
       },
@@ -2725,6 +2875,7 @@
           "nombre",
           "tipo",
           "activo",
+          "peso",
           "editable",
           "section_count",
           "criterion_count"
@@ -2758,6 +2909,11 @@
           "nombre": {
             "type": "string"
           },
+          "peso": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Peso porcentual (0..100) de esta rúbrica en el puntaje final combinado."
+          },
           "section_count": {
             "type": "integer",
             "format": "int64"
@@ -2775,6 +2931,7 @@
           "nombre",
           "tipo",
           "activo",
+          "peso",
           "editable",
           "categorias",
           "sections"
@@ -2810,6 +2967,11 @@
           },
           "nombre": {
             "type": "string"
+          },
+          "peso": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Peso porcentual (0..100) de esta rúbrica en el puntaje final combinado\ndel prototipo."
           },
           "sections": {
             "type": "array",

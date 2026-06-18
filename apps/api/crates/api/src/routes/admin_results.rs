@@ -167,7 +167,7 @@ pub async fn by_categoria(
          AND ev.submitted_at IS NOT NULL
          AND ev.template_id IN (
              SELECT id FROM rubric_templates
-             WHERE edition_id = $1 AND tipo = $2::rubric_type
+             WHERE edition_id = $1 AND tipo = $2::rubric_type AND activo
          )
         LEFT JOIN users u ON u.id = ev.jurado_id
         WHERE p.edition_id = $1
@@ -325,7 +325,7 @@ pub async fn export_csv(
             WHERE ev.submitted_at IS NOT NULL
               AND ev.template_id IN (
                   SELECT id FROM rubric_templates
-                  WHERE edition_id = $1 AND tipo = $2::rubric_type
+                  WHERE edition_id = $1 AND tipo = $2::rubric_type AND activo
               )
             GROUP BY ev.prototipo_id, ev.id
         )
@@ -393,11 +393,240 @@ pub struct ExportQuery {
     pub rubric_type: Option<String>,
 }
 
+// ---------------------------------------------------------------------------
+// GET /admin/results/edition/:id/final — puntaje combinado ponderado
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FinalRankingView {
+    pub edition_id: Uuid,
+    /// Prototipos ordenados por `puntaje_final` descendente.
+    pub prototipos: Vec<FinalPrototipoView>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FinalPrototipoView {
+    pub prototipo_id: Uuid,
+    pub folio: String,
+    pub nombre: String,
+    /// Σ_tipo (promedio_tipo / max_total_tipo) * (peso_tipo / 100), en 0..1.
+    pub puntaje_final: f64,
+    /// Desglose por tipo de rúbrica (exhibicion, memoria).
+    pub desglose: Vec<FinalBreakdownView>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FinalBreakdownView {
+    pub rubric_type: String,
+    pub peso: i32,
+    pub max_total: i64,
+    /// Promedio de los `total` de jurados (null si no hay evaluaciones).
+    pub promedio: Option<f64>,
+    /// Aporte ponderado de este tipo al `puntaje_final`:
+    /// (promedio / max_total) * (peso / 100). 0 si max_total es 0.
+    pub aporte: f64,
+}
+
+/// Parámetros (max_total, peso) de la rúbrica activa de un tipo dado.
+struct TipoParams {
+    max_total: i64,
+    peso: i32,
+}
+
+/// Resuelve (max_total, peso) de la rúbrica ACTIVA más reciente para
+/// (edition, tipo). Si no hay rúbrica activa, max_total=0 y peso=0.
+async fn tipo_params(pool: &sqlx::PgPool, edition_id: Uuid, tipo: &str) -> ApiResult<TipoParams> {
+    let row: Option<(i32, i64)> = sqlx::query_as(
+        r#"
+        SELECT t.peso,
+               COALESCE((
+                   SELECT SUM(c.max_score)::BIGINT
+                   FROM rubric_criteria c
+                   JOIN rubric_sections s ON s.id = c.section_id
+                   WHERE s.template_id = t.id
+                     AND c.kind IN ('scale', 'boolean')
+               ), 0) AS max_total
+        FROM rubric_templates t
+        WHERE t.edition_id = $1 AND t.tipo = $2::rubric_type AND t.activo
+        ORDER BY t.created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(edition_id)
+    .bind(tipo)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    Ok(match row {
+        Some((peso, max_total)) => TipoParams { max_total, peso },
+        None => TipoParams {
+            max_total: 0,
+            peso: 0,
+        },
+    })
+}
+
+/// Puntaje final combinado por prototipo de una edición.
+///
+/// Para cada prototipo: `puntaje_final = Σ_tipo (promedio_tipo / max_total_tipo)
+/// * (peso_tipo / 100)`, considerando SÓLO la rúbrica ACTIVA de cada tipo. El
+/// promedio_tipo es la media de los `total` (suma de scores) de las
+/// evaluaciones ya `submitted_at` contra esa rúbrica. Si un tipo no tiene
+/// rúbrica activa o `max_total = 0`, su aporte es 0 (no NaN). El ranking se
+/// ordena por `puntaje_final` descendente.
+#[utoipa::path(
+    get,
+    path = "/admin/results/edition/{id}/final",
+    tag = "admin/results",
+    params(("id" = Uuid, Path, description = "ID de la edición")),
+    responses(
+        (status = 200, description = "Ranking combinado ponderado", body = FinalRankingView),
+        (status = 403, description = "Sólo admin"),
+        (status = 404, description = "Edición no encontrada"),
+    ),
+    security(("bearer_auth" = [])),
+)]
+pub async fn final_ranking(
+    State(state): State<AppState>,
+    _: RequireAdmin,
+    Path(edition_id): Path<Uuid>,
+) -> ApiResult<Json<FinalRankingView>> {
+    let edition_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM editions WHERE id = $1)")
+            .bind(edition_id)
+            .fetch_one(&state.pool)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+    if !edition_exists {
+        return Err(ApiError::Core(dems_core::CoreError::NotFound));
+    }
+
+    const TIPOS: [&str; 2] = ["exhibicion", "memoria"];
+
+    // Parámetros (max_total, peso) por tipo, una sola vez.
+    let mut params: HashMap<&str, TipoParams> = HashMap::new();
+    for tipo in TIPOS {
+        params.insert(tipo, tipo_params(&state.pool, edition_id, tipo).await?);
+    }
+
+    // Prototipos de la edición + promedio por tipo (sólo rúbrica activa,
+    // evaluaciones submitted). Una fila por (prototipo, tipo) con promedio.
+    let rows = sqlx::query_as::<_, (Uuid, String, String, String, Option<f64>)>(
+        r#"
+        WITH ev_totals AS (
+            SELECT ev.prototipo_id,
+                   rt.tipo::text AS tipo,
+                   ev.id AS ev_id,
+                   COALESCE(SUM(es.score)::BIGINT, 0) AS total
+            FROM evaluaciones ev
+            JOIN rubric_templates rt ON rt.id = ev.template_id
+            LEFT JOIN evaluacion_scores es ON es.evaluacion_id = ev.id
+            WHERE ev.submitted_at IS NOT NULL
+              AND rt.edition_id = $1
+              AND rt.activo
+            GROUP BY ev.prototipo_id, rt.tipo, ev.id
+        )
+        SELECT p.id, p.folio, p.nombre,
+               t.tipo,
+               AVG(t.total)::DOUBLE PRECISION AS promedio
+        FROM prototipos p
+        LEFT JOIN ev_totals t ON t.prototipo_id = p.id
+        WHERE p.edition_id = $1
+        GROUP BY p.id, p.folio, p.nombre, t.tipo
+        ORDER BY p.folio
+        "#,
+    )
+    .bind(edition_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    // Agrupar por prototipo, conservando orden estable de aparición.
+    let mut order: Vec<Uuid> = Vec::new();
+    let mut promedios: HashMap<Uuid, (String, String, HashMap<String, f64>)> = HashMap::new();
+    for (pid, folio, nombre, tipo, promedio) in rows {
+        let entry = promedios.entry(pid).or_insert_with(|| {
+            order.push(pid);
+            (folio, nombre, HashMap::new())
+        });
+        // tipo es NULL sólo cuando el prototipo no tiene evaluaciones (LEFT JOIN);
+        // en ese caso `promedio` también es NULL. Sólo registramos pares válidos.
+        if let Some(avg) = promedio {
+            entry.2.insert(tipo, avg);
+        }
+    }
+
+    let mut prototipos: Vec<FinalPrototipoView> = order
+        .into_iter()
+        .map(|pid| {
+            let (folio, nombre, type_avgs) = promedios.remove(&pid).unwrap();
+            let mut puntaje_final = 0.0_f64;
+            let mut desglose: Vec<FinalBreakdownView> = Vec::with_capacity(TIPOS.len());
+            for tipo in TIPOS {
+                let tp = params.get(tipo).expect("params seeded for every tipo");
+                let promedio = type_avgs.get(tipo).copied();
+                let aporte = match promedio {
+                    Some(avg) if tp.max_total > 0 => {
+                        (avg / tp.max_total as f64) * (tp.peso as f64 / 100.0)
+                    }
+                    _ => 0.0,
+                };
+                puntaje_final += aporte;
+                desglose.push(FinalBreakdownView {
+                    rubric_type: tipo.to_string(),
+                    peso: tp.peso,
+                    max_total: tp.max_total,
+                    promedio,
+                    aporte,
+                });
+            }
+            FinalPrototipoView {
+                prototipo_id: pid,
+                folio,
+                nombre,
+                puntaje_final,
+                desglose,
+            }
+        })
+        .collect();
+
+    // Ranking: puntaje_final desc; empate → folio asc para estabilidad.
+    prototipos.sort_by(|a, b| {
+        b.puntaje_final
+            .partial_cmp(&a.puntaje_final)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.folio.cmp(&b.folio))
+    });
+
+    Ok(Json(FinalRankingView {
+        edition_id,
+        prototipos,
+    }))
+}
+
 fn csv_escape(s: &str) -> String {
-    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
-        let escaped = s.replace('"', "\"\"");
-        format!("\"{escaped}\"")
+    // Defensa contra CSV formula injection: una celda que empieza con =, +, -,
+    // @, TAB o CR puede ejecutarse como fórmula al abrir el CSV en una hoja de
+    // cálculo. La prefijamos con un apóstrofo para neutralizarla.
+    let needs_formula_guard = s
+        .chars()
+        .next()
+        .is_some_and(|c| matches!(c, '=' | '+' | '-' | '@' | '\t' | '\r'));
+    let guarded = if needs_formula_guard {
+        format!("'{s}")
     } else {
         s.to_string()
+    };
+
+    if guarded.contains(',')
+        || guarded.contains('"')
+        || guarded.contains('\n')
+        || guarded.contains('\r')
+    {
+        let escaped = guarded.replace('"', "\"\"");
+        format!("\"{escaped}\"")
+    } else {
+        guarded
     }
 }

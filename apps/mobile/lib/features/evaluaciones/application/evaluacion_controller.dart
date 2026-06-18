@@ -82,6 +82,18 @@ class EvaluacionController extends AsyncNotifier<EvaluacionFormState> {
 
   static const _uuid = Uuid();
 
+  /// #8: decide si reconciliar la fila local con el estado remoto al abrir.
+  /// Sólo reconciliamos filas YA creadas en el server, SIN cambios sucios y SIN
+  /// un submit offline pendiente (submitRequested=true con submittedAt local
+  /// null): ese caso indica una intención de envío que aún no llegó al servidor
+  /// y que reconciliar borraría (el server devolvería submitted_at=NULL).
+  static bool shouldReconcileOnOpen(Evaluacione row) {
+    if (row.serverId == null) return false;
+    if (row.dirty) return false;
+    if (row.submitRequested && row.submittedAt == null) return false;
+    return true;
+  }
+
   @override
   Future<EvaluacionFormState> build() async {
     final auth = ref.read(authControllerProvider).value;
@@ -138,6 +150,24 @@ class EvaluacionController extends AsyncNotifier<EvaluacionFormState> {
       } on EvaluacionNetworkFailure {
         // OK: trabajamos con lo que haya en local, sin hidratación.
       }
+    } else if (bundle != null && shouldReconcileOnOpen(bundle.row)) {
+      // #8: ya tenemos el server id y la fila NO tiene cambios pendientes.
+      // Reconciliamos con el estado remoto autoritativo al abrir: p.ej. un
+      // reopen del admin (submitted_at = NULL) debe reflejarse localmente
+      // (submittedAt → null, submitRequested → false). Conservador: sólo
+      // reconciliamos filas limpias sin mutaciones pendientes; nunca pisamos
+      // datos locales aún no sincronizados.
+      try {
+        final remote = await repo.fetchEvaluacion(bundle.row.serverId!);
+        bundle = await _hydrateFromRemote(
+          dao: dao,
+          juradoId: juradoId,
+          existing: bundle,
+          remote: remote,
+        );
+      } on EvaluacionFailure {
+        // Sin red o error transitorio: seguimos con el estado local.
+      }
     }
 
     // 4. Si aún no hay fila local, crea placeholder pero sin tocar el servidor.
@@ -167,7 +197,11 @@ class EvaluacionController extends AsyncNotifier<EvaluacionFormState> {
       submittedAt: Value(remote.submittedAt),
       syncedAt: Value(DateTime.now().toUtc()),
       dirty: const Value(false),
-      submitRequested: Value(remote.isSubmitted),
+      // #3 (cosmético): al hidratar un remoto YA enviado NO dejamos
+      // submitRequested=true. El estado "enviado" ya lo cubre submittedAt; con
+      // submitRequested=true la fila contaría como pending para siempre en
+      // dirtyOrPending() y el badge nunca llegaría a 0.
+      submitRequested: const Value(false),
       observaciones: Value(remote.observaciones),
       acompanamientoAsesor: Value(remote.acompanamientoAsesor),
       opinionPersonal: Value(remote.opinionPersonal),

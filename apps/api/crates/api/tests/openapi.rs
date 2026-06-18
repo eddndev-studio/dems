@@ -9,7 +9,8 @@ use serde_json::Value;
 use sqlx::PgPool;
 use tower::ServiceExt;
 
-use common::build_app;
+use common::{build_app, test_config};
+use dems_api::{routes, state::AppState};
 
 async fn get(pool: PgPool, path: &str) -> (StatusCode, String, Value) {
     let app = build_app(pool);
@@ -42,6 +43,26 @@ async fn openapi_json_is_served(pool: PgPool) {
     assert!(body["openapi"].as_str().unwrap_or("").starts_with("3."));
     assert_eq!(body["info"]["title"], "DEMS API");
     assert!(body["info"]["version"].is_string());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn openapi_json_is_404_when_docs_disabled(pool: PgPool) {
+    // #14: con ENABLE_DOCS=false (enable_docs=false en Config) no se monta
+    // Swagger ni /openapi.json.
+    let mut cfg = test_config();
+    cfg.enable_docs = false;
+    let app = routes::router(AppState::new(pool, cfg));
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[sqlx::test(migrations = "../../migrations")]

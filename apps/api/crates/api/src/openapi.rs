@@ -83,6 +83,7 @@ impl Modify for SecurityAddon {
         // --- Admin: results & ops ---
         admin_results::by_categoria,
         admin_results::export_csv,
+        admin_results::final_ranking,
         evaluacion_routes::reopen,
     ),
     modifiers(&SecurityAddon),

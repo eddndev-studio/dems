@@ -214,11 +214,14 @@ pub async fn patch(
         .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
 
     let role_sql = req.role.map(role_as_sql);
+    // Desactivar (is_active=false) revoca los refresh tokens del usuario
+    // incrementando token_version. Cualquier otro patch lo deja igual.
     let view = sqlx::query_as::<_, UserView>(
         r#"UPDATE users
            SET full_name = COALESCE($2, full_name),
                role = COALESCE($3::user_role, role),
-               is_active = COALESCE($4, is_active)
+               is_active = COALESCE($4, is_active),
+               token_version = token_version + CASE WHEN $4 IS FALSE THEN 1 ELSE 0 END
            WHERE id = $1
            RETURNING id, email, full_name, role, is_active, created_at, updated_at"#,
     )
@@ -259,12 +262,18 @@ pub async fn reset_password(
         .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
 
     let hash = password::hash(&req.password).map_err(ApiError::Internal)?;
-    let affected = sqlx::query("UPDATE users SET password_hash = $2 WHERE id = $1")
-        .bind(id)
-        .bind(&hash)
-        .execute(&state.pool)
-        .await
-        .map_err(|e| ApiError::Internal(e.into()))?;
+    // Incrementamos token_version: los tokens (access Y refresh) emitidos antes
+    // del reset dejan de servir. El refresh se corta en /auth/refresh y el
+    // access en el extractor CurrentUser, ambos al comparar el claim contra el
+    // nuevo token_version. Un robo de credenciales no sobrevive al reset.
+    let affected = sqlx::query(
+        "UPDATE users SET password_hash = $2, token_version = token_version + 1 WHERE id = $1",
+    )
+    .bind(id)
+    .bind(&hash)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
 
     if affected.rows_affected() == 0 {
         return Err(ApiError::Core(dems_core::CoreError::NotFound));

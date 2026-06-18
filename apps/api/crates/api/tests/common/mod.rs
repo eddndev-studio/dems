@@ -16,6 +16,7 @@ pub fn test_config() -> Config {
         jwt_secret: "test-jwt-secret-please-change".into(),
         jwt_access_ttl_secs: 900,
         jwt_refresh_ttl_secs: 2_592_000,
+        enable_docs: true,
     }
 }
 
@@ -26,7 +27,28 @@ pub fn build_app(pool: PgPool) -> Router {
 /// Mint a JWT for integration tests. Bypasses the login flow when the test
 /// only cares about what a given role can reach.
 pub fn token_for(user_id: Uuid, role: UserRole, ttl: i64, kind: TokenKind) -> String {
-    auth::issue(&test_config().jwt_secret, user_id, role, ttl, kind).unwrap()
+    auth::issue(&test_config().jwt_secret, user_id, role, ttl, kind, 0).unwrap()
+}
+
+/// Mint a token embedding an explicit `token_version` claim — used by refresh
+/// revocation tests that need a stale version.
+#[allow(dead_code)]
+pub fn token_for_version(
+    user_id: Uuid,
+    role: UserRole,
+    ttl: i64,
+    kind: TokenKind,
+    token_version: i32,
+) -> String {
+    auth::issue(
+        &test_config().jwt_secret,
+        user_id,
+        role,
+        ttl,
+        kind,
+        token_version,
+    )
+    .unwrap()
 }
 
 /// Insert a user; password is argon2-hashed. Returns the user id.

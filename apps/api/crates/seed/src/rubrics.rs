@@ -84,8 +84,8 @@ async fn seed_exhibicion_2024(
 ) -> anyhow::Result<()> {
     let template_id = Uuid::new_v4();
     sqlx::query(
-        r#"INSERT INTO rubric_templates (id, edition_id, nombre, tipo, activo)
-           VALUES ($1, $2, 'Rúbrica de Exhibición 2024', 'exhibicion', true)"#,
+        r#"INSERT INTO rubric_templates (id, edition_id, nombre, tipo, activo, peso)
+           VALUES ($1, $2, 'Rúbrica de Exhibición 2024', 'exhibicion', true, 60)"#,
     )
     .bind(template_id)
     .bind(edition_id)
@@ -193,8 +193,8 @@ async fn seed_memoria_2021(
 ) -> anyhow::Result<()> {
     let template_id = Uuid::new_v4();
     sqlx::query(
-        r#"INSERT INTO rubric_templates (id, edition_id, nombre, tipo, activo)
-           VALUES ($1, $2, 'Rúbrica de Memoria Técnica 2021', 'memoria', true)"#,
+        r#"INSERT INTO rubric_templates (id, edition_id, nombre, tipo, activo, peso)
+           VALUES ($1, $2, 'Rúbrica de Memoria Técnica 2021', 'memoria', true, 50)"#,
     )
     .bind(template_id)
     .bind(edition_id)

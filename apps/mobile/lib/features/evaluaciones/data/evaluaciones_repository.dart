@@ -4,6 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/api/api_client.dart';
 import 'evaluacion_models.dart';
 
+/// Resultado de [EvaluacionesRepository.createEvaluacion]: la vista del
+/// servidor más si fue un replay idempotente (HTTP 200) en lugar de una
+/// creación nueva (HTTP 201).
+class CreateEvaluacionResult {
+  const CreateEvaluacionResult({required this.view, required this.replayed});
+  final EvaluacionView view;
+  final bool replayed;
+}
+
 class EvaluacionesRepository {
   EvaluacionesRepository(this._dio);
   final Dio _dio;
@@ -28,7 +37,16 @@ class EvaluacionesRepository {
     }
   }
 
-  Future<EvaluacionView> createEvaluacion({
+  /// Crea (o reproduce de forma idempotente) una evaluación.
+  ///
+  /// El backend responde `201` cuando la crea por primera vez y `200` cuando
+  /// reproduce una ya existente con el mismo `(jurado, client_id)`. El flag
+  /// [CreateEvaluacionResult.replayed] expone esa diferencia para que el sync
+  /// pueda empujar los scores locales que aún no llegaron al servidor.
+  ///
+  /// El cliente manda SIEMPRE el set completo de [scores] (el server hace
+  /// replace-all), por lo que no hay merge parcial que perder en una creación.
+  Future<CreateEvaluacionResult> createEvaluacion({
     required String prototipoId,
     required String templateId,
     required String clientId,
@@ -50,7 +68,10 @@ class EvaluacionesRepository {
           'scores': scores.map((s) => s.toJson()).toList(),
         },
       );
-      return EvaluacionView.fromJson(res.data!);
+      return CreateEvaluacionResult(
+        view: EvaluacionView.fromJson(res.data!),
+        replayed: res.statusCode == 200,
+      );
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -100,20 +121,36 @@ class EvaluacionesRepository {
     if (status == 403) return const EvaluacionForbidden();
     if (status == 404) return const EvaluacionNotFound();
     if (status == 409) {
-      final body = e.response?.data;
-      final detail = body is Map<String, dynamic>
-          ? (body['message'] ?? body['detail'] ?? body.toString()).toString()
-          : (body?.toString() ?? 'Conflicto');
-      return EvaluacionConflict(detail);
+      return EvaluacionConflict(
+        _detail(e.response?.data) ?? 'Conflicto',
+        code: _code(e.response?.data),
+      );
     }
     if (status == 422) {
-      final body = e.response?.data;
-      final detail = body is Map<String, dynamic>
-          ? (body['message'] ?? body['detail'] ?? body.toString()).toString()
-          : (body?.toString() ?? 'Validación');
-      return EvaluacionValidation(detail);
+      return EvaluacionValidation(_detail(e.response?.data) ?? 'Validación');
     }
     return EvaluacionUnexpected(e.message ?? 'HTTP $status');
+  }
+
+  /// Extrae el detalle de error del body. El API responde `{ "error": msg }`;
+  /// toleramos también `message`/`detail` por robustez.
+  String? _detail(dynamic body) {
+    if (body is Map<String, dynamic>) {
+      final m = body['error'] ?? body['message'] ?? body['detail'];
+      if (m != null) return m.toString();
+      return body.toString();
+    }
+    return body?.toString();
+  }
+
+  /// Extrae el código máquina (`{ "code": "..." }`) de los 409 de evaluación.
+  /// Es `null` si el backend no lo manda (el sync cae al fallback por substring).
+  String? _code(dynamic body) {
+    if (body is Map<String, dynamic>) {
+      final c = body['code'];
+      if (c is String && c.isNotEmpty) return c;
+    }
+    return null;
   }
 }
 

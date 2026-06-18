@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use common::{
     admin, build_app, insert_prototipo, insert_user, jurado, seed_edition, seed_rubric_template,
-    seed_section_with_criterion, seed_submitted_evaluacion,
+    seed_section_with_criterion, seed_submitted_evaluacion, set_edition_phase,
 };
 
 async fn post(pool: PgPool, path: &str, tok: Option<&str>) -> (StatusCode, Value) {
@@ -174,6 +174,7 @@ async fn jurado_can_resubmit_after_reopen(pool: PgPool) {
     let (_, atok) = admin(&pool).await;
 
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     let (_, c1) = seed_section_with_criterion(&pool, r, 1, "C", 3).await;

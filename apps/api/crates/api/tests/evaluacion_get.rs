@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use common::{
     admin, assign_jurado, build_app, insert_prototipo, insert_user, jurado, seed_edition,
-    seed_rubric_template, seed_section_with_criterion, token_for,
+    seed_rubric_template, seed_section_with_criterion, set_edition_phase, token_for,
 };
 use dems_api::auth::TokenKind;
 use dems_core::models::UserRole;
@@ -50,6 +50,7 @@ async fn get_eval(pool: PgPool, id: &str, tok: Option<&str>) -> (StatusCode, Val
 async fn owner_jurado_gets_200(pool: PgPool) {
     let (j_id, tok) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     let (_, c1) = seed_section_with_criterion(&pool, r, 1, "C", 3).await;
@@ -78,6 +79,7 @@ async fn owner_jurado_gets_200(pool: PgPool) {
 async fn other_jurado_gets_403(pool: PgPool) {
     let (j1_id, t1) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     assign_jurado(&pool, j1_id, p, r).await;
@@ -101,6 +103,7 @@ async fn other_jurado_gets_403(pool: PgPool) {
 async fn admin_can_read_any_evaluation(pool: PgPool) {
     let (j_id, t1) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     assign_jurado(&pool, j_id, p, r).await;

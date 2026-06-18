@@ -198,8 +198,15 @@ class EvaluacionNotFound extends EvaluacionFailure {
 }
 
 class EvaluacionConflict extends EvaluacionFailure {
-  const EvaluacionConflict(this.detail);
+  const EvaluacionConflict(this.detail, {this.code});
   final String detail;
+
+  /// Código máquina del 409 (`body['code']`), p.ej. `already_submitted`,
+  /// `edition_closed`, `client_id_reused`, `incomplete`. Es `null` si el
+  /// backend aún no lo envía (compat); en ese caso el cliente cae al
+  /// emparejado por substring de [detail].
+  final String? code;
+
   @override
   String get message => detail;
 }

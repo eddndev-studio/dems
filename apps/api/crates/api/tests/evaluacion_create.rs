@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use common::{
     admin, assign_jurado, build_app, insert_prototipo, insert_user, jurado, seed_edition,
-    seed_rubric_template, token_for,
+    seed_rubric_template, set_edition_phase, token_for,
 };
 use dems_api::auth::TokenKind;
 use dems_core::models::UserRole;
@@ -51,6 +51,7 @@ async fn create_is_401_without_token(pool: PgPool) {
 async fn create_returns_201_with_evaluacion(pool: PgPool) {
     let (jurado_id, tok) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F-01", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     assign_jurado(&pool, jurado_id, p, r).await;
@@ -86,6 +87,7 @@ async fn create_returns_201_with_evaluacion(pool: PgPool) {
 async fn create_is_403_when_jurado_not_assigned(pool: PgPool) {
     let (_, tok) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F-01", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     // NOTE: no assignment.
@@ -104,6 +106,7 @@ async fn create_is_403_when_another_jurados_assignment(pool: PgPool) {
     let (_, tok) = jurado(&pool).await;
     let other = insert_user(&pool, "o@x.mx", "O", "jurado", "pw", true).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F-01", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     assign_jurado(&pool, other, p, r).await; // asignada a otro jurado
@@ -123,6 +126,7 @@ async fn create_is_403_for_admin_without_assignment(pool: PgPool) {
     // esté asignado como jurado, lo cual no es su rol.
     let (_, tok) = admin(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F-01", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
 

@@ -28,6 +28,7 @@ class RubricSummary {
     required this.tipo,
     required this.descripcion,
     required this.activo,
+    required this.peso,
     required this.editable,
     required this.sectionCount,
     required this.criterionCount,
@@ -39,6 +40,11 @@ class RubricSummary {
   final RubricType tipo;
   final String? descripcion;
   final bool activo;
+
+  /// Peso porcentual (0..100) de esta rúbrica en el puntaje final combinado.
+  /// El backend default es 100; lo asumimos si el campo no viene (fixtures
+  /// previas a la columna `peso`).
+  final int peso;
 
   /// `true` si la edición está en fase `preparacion`: la estructura puede
   /// crearse/editarse/borrarse. `false` una vez en evaluación/cerrada.
@@ -53,6 +59,7 @@ class RubricSummary {
         tipo: RubricType.fromApi(json['tipo'] as String),
         descripcion: json['descripcion'] as String?,
         activo: json['activo'] as bool,
+        peso: (json['peso'] as num?)?.toInt() ?? 100,
         editable: json['editable'] as bool? ?? false,
         sectionCount: (json['section_count'] as num).toInt(),
         criterionCount: (json['criterion_count'] as num).toInt(),
@@ -62,6 +69,7 @@ class RubricSummary {
     String? nombre,
     String? descripcion,
     bool? activo,
+    int? peso,
   }) =>
       RubricSummary(
         id: id,
@@ -70,6 +78,7 @@ class RubricSummary {
         tipo: tipo,
         descripcion: descripcion ?? this.descripcion,
         activo: activo ?? this.activo,
+        peso: peso ?? this.peso,
         editable: editable,
         sectionCount: sectionCount,
         criterionCount: criterionCount,
@@ -148,6 +157,7 @@ class RubricDetail {
     required this.tipo,
     required this.descripcion,
     required this.activo,
+    required this.peso,
     required this.editable,
     required this.categorias,
     required this.sections,
@@ -159,6 +169,10 @@ class RubricDetail {
   final RubricType tipo;
   final String? descripcion;
   final bool activo;
+
+  /// Peso porcentual (0..100) de esta rúbrica en el puntaje final combinado.
+  /// Default 100 si el backend no lo envía.
+  final int peso;
 
   /// `true` si la edición está en fase `preparacion` (estructura editable).
   final bool editable;
@@ -172,6 +186,7 @@ class RubricDetail {
         tipo: RubricType.fromApi(json['tipo'] as String),
         descripcion: json['descripcion'] as String?,
         activo: json['activo'] as bool,
+        peso: (json['peso'] as num?)?.toInt() ?? 100,
         editable: json['editable'] as bool? ?? false,
         categorias: (json['categorias'] as List<dynamic>).cast<String>(),
         sections: (json['sections'] as List<dynamic>)

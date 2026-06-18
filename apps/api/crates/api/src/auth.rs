@@ -12,6 +12,12 @@ pub struct Claims {
     pub exp: i64,
     pub iat: i64,
     pub kind: TokenKind,
+    /// Versión del token al momento de emitirlo. El endpoint de refresh la
+    /// compara contra `users.token_version`: un cambio (reset de contraseña o
+    /// desactivación) invalida los refresh tokens viejos. Default 0 para
+    /// compatibilidad con tokens emitidos antes de la columna.
+    #[serde(default)]
+    pub token_version: i32,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -37,6 +43,7 @@ pub fn issue(
     role: UserRole,
     ttl_secs: i64,
     kind: TokenKind,
+    token_version: i32,
 ) -> Result<String, AuthError> {
     let now = Utc::now();
     let claims = Claims {
@@ -45,6 +52,7 @@ pub fn issue(
         iat: now.timestamp(),
         exp: (now + Duration::seconds(ttl_secs)).timestamp(),
         kind,
+        token_version,
     };
     encode(
         &Header::default(),
@@ -96,12 +104,13 @@ mod tests {
     #[test]
     fn issue_and_verify_preserves_claims() {
         let user = Uuid::new_v4();
-        let tok = issue(SECRET, user, UserRole::Admin, 60, TokenKind::Access).unwrap();
+        let tok = issue(SECRET, user, UserRole::Admin, 60, TokenKind::Access, 0).unwrap();
 
         let claims = verify(SECRET, &tok).unwrap();
         assert_eq!(claims.sub, user);
         assert_eq!(claims.role, UserRole::Admin);
         assert_eq!(claims.kind, TokenKind::Access);
+        assert_eq!(claims.token_version, 0);
         assert!(claims.exp > claims.iat);
     }
 
@@ -113,6 +122,7 @@ mod tests {
             UserRole::Jurado,
             60,
             TokenKind::Access,
+            0,
         )
         .unwrap();
 
@@ -129,6 +139,7 @@ mod tests {
             UserRole::Jurado,
             -10,
             TokenKind::Access,
+            0,
         )
         .unwrap();
 
@@ -144,6 +155,7 @@ mod tests {
             UserRole::Jurado,
             60,
             TokenKind::Refresh,
+            0,
         )
         .unwrap();
 
@@ -159,6 +171,7 @@ mod tests {
             UserRole::Jurado,
             60,
             TokenKind::Refresh,
+            0,
         )
         .unwrap();
 

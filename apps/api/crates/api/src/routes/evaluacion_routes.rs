@@ -12,7 +12,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-use dems_core::models::UserRole;
+use dems_core::models::{EditionPhase, UserRole};
 
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::{CurrentUser, RequireAdmin};
@@ -88,7 +88,7 @@ pub struct ScoreView {
         (status = 200, description = "Replay idempotente — devuelve la existente", body = EvaluacionView),
         (status = 403, description = "Jurado no asignado a (prototipo, template)"),
         (status = 422, description = "Score fuera de rango o criterio inválido"),
-        (status = 409, description = "Evaluación ya existe para esa terna"),
+        (status = 409, description = "Conflicto. Body lleva `code`: `client_id_reused` (client_id de otra terna) o `edition_closed` (edición fuera de fase 'evaluacion'). El choque de unicidad de terna va sin `code`."),
     ),
     security(("bearer_auth" = [])),
 )]
@@ -103,8 +103,8 @@ pub async fn create(
     // --- Idempotency: replay with the same (jurado, client_id) returns the
     //     existing evaluation so the offline sync worker can safely retry.
     if let Some(cid) = &req.client_id {
-        let existing: Option<Uuid> = sqlx::query_scalar(
-            r#"SELECT id FROM evaluaciones
+        let existing: Option<(Uuid, Uuid, Uuid)> = sqlx::query_as(
+            r#"SELECT id, prototipo_id, template_id FROM evaluaciones
                WHERE jurado_id = $1 AND client_id = $2"#,
         )
         .bind(user.id)
@@ -113,7 +113,16 @@ pub async fn create(
         .await
         .map_err(|e| ApiError::Internal(e.into()))?;
 
-        if let Some(id) = existing {
+        if let Some((id, existing_prototipo, existing_template)) = existing {
+            // El client_id ya se usó. Sólo es un replay legítimo si la terna
+            // coincide; si difiere, el cliente reutilizó el id para otra
+            // (prototipo, template) — error de cliente, 409.
+            if existing_prototipo != req.prototipo_id || existing_template != req.template_id {
+                return Err(ApiError::ConflictCoded(
+                    "client_id_reused",
+                    "client_id reused for a different prototipo/template".into(),
+                ));
+            }
             let view = load_evaluacion(&state, id).await?;
             return Ok((StatusCode::OK, Json(view)));
         }
@@ -135,6 +144,9 @@ pub async fn create(
     if !assigned {
         return Err(ApiError::Core(dems_core::CoreError::Forbidden));
     }
+
+    // --- Phase gate: la edición del prototipo debe estar en `evaluacion`. ---
+    require_edition_in_evaluacion(&state.pool, req.prototipo_id).await?;
 
     // --- Validate every score against its criterion up front. ---
     validate_scores_against_template(&state.pool, req.template_id, &req.scores).await?;
@@ -209,6 +221,13 @@ pub async fn create(
                 if db.is_check_violation() {
                     return ApiError::Core(dems_core::CoreError::Validation(
                         "score or text_answer must be set".into(),
+                    ));
+                }
+                // PK (evaluacion_id, criterion_id) duplicada ⇒ body inválido,
+                // no error de servidor.
+                if db.is_unique_violation() {
+                    return ApiError::Core(dems_core::CoreError::Validation(
+                        "duplicate criterion_id in scores".into(),
                     ));
                 }
             }
@@ -288,9 +307,11 @@ pub struct PatchEvaluacionRequest {
     #[serde(default)]
     #[validate(range(min = 0, max = 100))]
     pub opinion_personal: Option<i32>,
-    /// Opcional: si se envía, reemplaza TODAS las filas de score para los
-    /// criterion_id incluidos (upsert). No elimina scores de criterios no
-    /// mencionados — ese es trabajo del cliente si el jurado lo desea.
+    /// Opcional. Si se envía, REEMPLAZA el set completo de scores: el cliente
+    /// manda siempre todas las filas que deben quedar. Las filas existentes
+    /// cuyo criterion_id no aparezca en el payload se ELIMINAN del servidor
+    /// (así un score que el jurado limpió desaparece), y las presentes se
+    /// hacen upsert. Si es `None`, los scores no se tocan.
     #[serde(default)]
     pub scores: Option<Vec<ScoreInput>>,
 }
@@ -305,7 +326,7 @@ pub struct PatchEvaluacionRequest {
         (status = 200, description = "Evaluación actualizada", body = EvaluacionView),
         (status = 403, description = "No es el dueño"),
         (status = 404, description = "No encontrada"),
-        (status = 409, description = "Ya enviada — no se puede editar"),
+        (status = 409, description = "Conflicto. Body lleva `code`: `already_submitted` (ya enviada — chequeado antes que la fase) o `edition_closed` (edición fuera de fase 'evaluacion')."),
         (status = 422, description = "Body inválido"),
     ),
     security(("bearer_auth" = [])),
@@ -319,9 +340,9 @@ pub async fn patch_evaluacion(
     req.validate()
         .map_err(|e| ApiError::Core(dems_core::CoreError::Validation(e.to_string())))?;
 
-    let (jurado_id, template_id, submitted_at) =
-        sqlx::query_as::<_, (Uuid, Uuid, Option<DateTime<Utc>>)>(
-            r#"SELECT jurado_id, template_id, submitted_at
+    let (jurado_id, prototipo_id, template_id, submitted_at) =
+        sqlx::query_as::<_, (Uuid, Uuid, Uuid, Option<DateTime<Utc>>)>(
+            r#"SELECT jurado_id, prototipo_id, template_id, submitted_at
            FROM evaluaciones WHERE id = $1"#,
         )
         .bind(id)
@@ -333,12 +354,23 @@ pub async fn patch_evaluacion(
     if jurado_id != user.id {
         return Err(ApiError::Core(dems_core::CoreError::Forbidden));
     }
+
+    // El check de "ya enviada" corre ANTES del gate de fase: un replay de algo
+    // YA enviado debe devolver `already_submitted` aunque la edición esté
+    // cerrada (de lo contrario el cliente vería `edition_closed` y nunca sabría
+    // que su envío sí llegó).
     if submitted_at.is_some() {
-        return Err(ApiError::Core(dems_core::CoreError::Conflict(
+        return Err(ApiError::ConflictCoded(
+            "already_submitted",
             "evaluation already submitted; cannot edit".into(),
-        )));
+        ));
     }
 
+    // Phase gate: la edición del prototipo debe estar en `evaluacion`.
+    require_edition_in_evaluacion(&state.pool, prototipo_id).await?;
+
+    // Validamos ANTES de abrir la transacción: un score inválido no debe borrar
+    // las filas existentes (el delete vive dentro de la tx).
     if let Some(scores) = &req.scores {
         validate_scores_against_template(&state.pool, template_id, scores).await?;
     }
@@ -365,6 +397,21 @@ pub async fn patch_evaluacion(
     .map_err(|e| ApiError::Internal(e.into()))?;
 
     if let Some(scores) = req.scores {
+        // El cliente envía SIEMPRE el set completo de scores. Borramos las
+        // filas que ya no aparecen en el payload (un score que el jurado limpió
+        // debe desaparecer del servidor) y hacemos upsert de las presentes,
+        // todo dentro de la misma transacción.
+        let keep_ids: Vec<Uuid> = scores.iter().map(|s| s.criterion_id).collect();
+        sqlx::query(
+            r#"DELETE FROM evaluacion_scores
+               WHERE evaluacion_id = $1 AND NOT (criterion_id = ANY($2))"#,
+        )
+        .bind(id)
+        .bind(&keep_ids)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+
         for s in scores {
             sqlx::query(
                 r#"INSERT INTO evaluacion_scores
@@ -412,7 +459,7 @@ pub async fn patch_evaluacion(
         (status = 200, description = "Evaluación enviada", body = EvaluacionView),
         (status = 403, description = "No es el dueño"),
         (status = 404, description = "No encontrada"),
-        (status = 409, description = "Ya enviada o algún criterio sin puntuar"),
+        (status = 409, description = "Conflicto. Body lleva `code`: `already_submitted` (ya enviada — chequeado antes que la fase), `edition_closed` (edición fuera de fase 'evaluacion') o `incomplete` (algún criterio sin puntuar)."),
     ),
     security(("bearer_auth" = [])),
 )]
@@ -421,8 +468,8 @@ pub async fn submit(
     user: CurrentUser,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<EvaluacionView>> {
-    let row = sqlx::query_as::<_, (Uuid, Uuid, Option<DateTime<Utc>>)>(
-        r#"SELECT jurado_id, template_id, submitted_at
+    let row = sqlx::query_as::<_, (Uuid, Uuid, Uuid, Option<DateTime<Utc>>)>(
+        r#"SELECT jurado_id, prototipo_id, template_id, submitted_at
            FROM evaluaciones WHERE id = $1"#,
     )
     .bind(id)
@@ -431,15 +478,23 @@ pub async fn submit(
     .map_err(|e| ApiError::Internal(e.into()))?
     .ok_or(ApiError::Core(dems_core::CoreError::NotFound))?;
 
-    let (jurado_id, template_id, submitted_at) = row;
+    let (jurado_id, prototipo_id, template_id, submitted_at) = row;
     if jurado_id != user.id {
         return Err(ApiError::Core(dems_core::CoreError::Forbidden));
     }
+
+    // El check de "ya enviada" corre ANTES del gate de fase: un replay de un
+    // submit de algo YA enviado debe devolver `already_submitted` aunque la
+    // edición esté cerrada, no `edition_closed`.
     if submitted_at.is_some() {
-        return Err(ApiError::Core(dems_core::CoreError::Conflict(
+        return Err(ApiError::ConflictCoded(
+            "already_submitted",
             "evaluation already submitted".into(),
-        )));
+        ));
     }
+
+    // Phase gate: la edición del prototipo debe estar en `evaluacion`.
+    require_edition_in_evaluacion(&state.pool, prototipo_id).await?;
 
     // Completeness check: every scoring criterion (scale/boolean) in the
     // rubric must have a score row. text_key criteria are unscored and
@@ -465,9 +520,10 @@ pub async fn submit(
     .map_err(|e| ApiError::Internal(e.into()))?;
 
     if let Some(criterion_text) = unscored {
-        return Err(ApiError::Core(dems_core::CoreError::Conflict(format!(
-            "cannot submit: criterion \"{criterion_text}\" is unscored"
-        ))));
+        return Err(ApiError::ConflictCoded(
+            "incomplete",
+            format!("cannot submit: criterion \"{criterion_text}\" is unscored"),
+        ));
     }
 
     sqlx::query("UPDATE evaluaciones SET submitted_at = NOW() WHERE id = $1")
@@ -528,6 +584,38 @@ pub async fn reopen(
 }
 
 // ---------------------------------------------------------------------------
+// Shared: gate edition phase via prototipo → edition
+// ---------------------------------------------------------------------------
+
+/// Bloquea la operación si la edición a la que pertenece `prototipo_id` no está
+/// en fase `evaluacion`. Resuelve prototipo → edition_id → editions.phase.
+/// Devuelve 409 si la fase no es `evaluacion`. Si el prototipo no existe no
+/// hace nada (deja que el flujo normal — assignment/FK — produzca su error),
+/// para no filtrar la existencia del prototipo.
+async fn require_edition_in_evaluacion(pool: &sqlx::PgPool, prototipo_id: Uuid) -> ApiResult<()> {
+    let phase: Option<EditionPhase> = sqlx::query_scalar(
+        r#"SELECT e.phase
+           FROM prototipos p
+           JOIN editions e ON e.id = p.edition_id
+           WHERE p.id = $1"#,
+    )
+    .bind(prototipo_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    if let Some(phase) = phase {
+        if phase != EditionPhase::Evaluacion {
+            return Err(ApiError::ConflictCoded(
+                "edition_closed",
+                "edition not in evaluation phase".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Shared: validate a batch of scores against a rubric template
 // ---------------------------------------------------------------------------
 
@@ -539,6 +627,20 @@ async fn validate_scores_against_template(
     if scores.is_empty() {
         return Ok(());
     }
+
+    // Rechazamos criterion_id duplicados en el payload con 422 antes de tocar
+    // la DB: de lo contrario el INSERT chocaría con la PK (evaluacion_id,
+    // criterion_id) y reportaría un 500 espurio para lo que es un body inválido.
+    let mut seen = std::collections::HashSet::with_capacity(scores.len());
+    for s in scores {
+        if !seen.insert(s.criterion_id) {
+            return Err(ApiError::Core(dems_core::CoreError::Validation(format!(
+                "duplicate criterion_id {} in scores",
+                s.criterion_id
+            ))));
+        }
+    }
+
     let crit_rows: Vec<(Uuid, i32, String)> = sqlx::query_as(
         r#"SELECT c.id, c.max_score, c.kind::text
            FROM rubric_criteria c

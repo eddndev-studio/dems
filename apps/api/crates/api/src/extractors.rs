@@ -19,6 +19,9 @@ use crate::state::AppState;
 /// - the header is not a well-formed `Bearer <jwt>`
 /// - the JWT is invalid, expired, or of the wrong kind (e.g. a refresh token)
 /// - the referenced user does not exist or is inactive
+/// - the token's `token_version` no longer matches `users.token_version`
+///   (un reset de contraseña o una desactivación lo incrementan, revocando de
+///   inmediato el access token —no sólo el refresh).
 #[derive(Debug, Clone)]
 pub struct CurrentUser {
     pub id: Uuid,
@@ -49,8 +52,8 @@ impl FromRequestParts<AppState> for CurrentUser {
         let claims = auth::verify_kind(&state.cfg.jwt_secret, token, TokenKind::Access)
             .map_err(|_| ApiError::Core(CoreError::Unauthorized))?;
 
-        let row = sqlx::query_as::<_, (Uuid, String, String, UserRole, bool)>(
-            r#"SELECT id, email, full_name, role, is_active
+        let row = sqlx::query_as::<_, (Uuid, String, String, UserRole, bool, i32)>(
+            r#"SELECT id, email, full_name, role, is_active, token_version
                FROM users WHERE id = $1"#,
         )
         .bind(claims.sub)
@@ -58,10 +61,17 @@ impl FromRequestParts<AppState> for CurrentUser {
         .await
         .map_err(|e| ApiError::Internal(e.into()))?;
 
-        let Some((id, email, full_name, role, is_active)) = row else {
+        let Some((id, email, full_name, role, is_active, token_version)) = row else {
             return Err(ApiError::Core(CoreError::Unauthorized));
         };
         if !is_active {
+            return Err(ApiError::Core(CoreError::Unauthorized));
+        }
+        // Revocación inmediata del access token: si el usuario bumpeó su
+        // token_version (reset de contraseña o desactivación), el access token
+        // viejo lleva la versión anterior en su claim y deja de servir —sin
+        // esperar a que expire por TTL ni a que el cliente intente refrescar.
+        if claims.token_version != token_version {
             return Err(ApiError::Core(CoreError::Unauthorized));
         }
 

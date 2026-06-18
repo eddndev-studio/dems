@@ -15,6 +15,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let cfg = config::Config::from_env().context("loading config")?;
+    cfg.warn_if_weak_jwt_secret();
 
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(16)

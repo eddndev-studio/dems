@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use common::{
     assign_jurado, build_app, insert_prototipo, insert_user, jurado, seed_edition,
-    seed_rubric_template, seed_section_with_criterion, token_for,
+    seed_rubric_template, seed_section_with_criterion, set_edition_phase, token_for,
 };
 use dems_api::auth::TokenKind;
 use dems_core::models::UserRole;
@@ -50,6 +50,7 @@ async fn submit(pool: PgPool, id: &str, tok: Option<&str>) -> (StatusCode, Value
 async fn submit_sets_submitted_at_when_all_scored(pool: PgPool) {
     let (j_id, tok) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     let (_, c1) = seed_section_with_criterion(&pool, r, 1, "C1", 3).await;
@@ -88,6 +89,7 @@ async fn submit_sets_submitted_at_when_all_scored(pool: PgPool) {
 async fn submit_is_409_when_unscored_criterion(pool: PgPool) {
     let (j_id, tok) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     let (_, c1) = seed_section_with_criterion(&pool, r, 1, "C1", 3).await;
@@ -105,8 +107,9 @@ async fn submit_is_409_when_unscored_criterion(pool: PgPool) {
     .await;
     let id = created["id"].as_str().unwrap().to_string();
 
-    let (status, _) = submit(pool.clone(), &id, Some(&tok)).await;
+    let (status, body) = submit(pool.clone(), &id, Some(&tok)).await;
     assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["code"], "incomplete", "body: {body}");
 
     // submitted_at sigue en null.
     let row: Option<chrono::DateTime<chrono::Utc>> =
@@ -122,6 +125,7 @@ async fn submit_is_409_when_unscored_criterion(pool: PgPool) {
 async fn submit_is_409_when_already_submitted(pool: PgPool) {
     let (j_id, tok) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     let (_, c1) = seed_section_with_criterion(&pool, r, 1, "C", 3).await;
@@ -140,14 +144,16 @@ async fn submit_is_409_when_already_submitted(pool: PgPool) {
     let (s1, _) = submit(pool.clone(), &id, Some(&tok)).await;
     assert_eq!(s1, StatusCode::OK);
 
-    let (s2, _) = submit(pool, &id, Some(&tok)).await;
+    let (s2, body) = submit(pool, &id, Some(&tok)).await;
     assert_eq!(s2, StatusCode::CONFLICT);
+    assert_eq!(body["code"], "already_submitted", "body: {body}");
 }
 
 #[sqlx::test(migrations = "../../migrations")]
 async fn other_jurado_cant_submit(pool: PgPool) {
     let (j1, t1) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     let (_, c1) = seed_section_with_criterion(&pool, r, 1, "C", 3).await;
@@ -176,6 +182,7 @@ async fn submit_ignores_text_key_criteria(pool: PgPool) {
     // el submit si el jurado no llenó el texto.
     let (j_id, tok) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     let (_, c1) = seed_section_with_criterion(&pool, r, 1, "C", 3).await;

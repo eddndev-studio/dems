@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use common::{
     assign_jurado, build_app, insert_prototipo, insert_user, jurado, seed_edition,
-    seed_rubric_template, seed_section_with_criterion, token_for,
+    seed_rubric_template, seed_section_with_criterion, set_edition_phase, token_for,
 };
 use dems_api::auth::TokenKind;
 use dems_core::models::UserRole;
@@ -54,6 +54,7 @@ async fn patch_eval(pool: PgPool, id: &str, tok: Option<&str>, body: Value) -> (
 async fn owner_can_update_scores(pool: PgPool) {
     let (j_id, tok) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     let (_, c1) = seed_section_with_criterion(&pool, r, 1, "C1", 3).await;
@@ -101,9 +102,110 @@ async fn owner_can_update_scores(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn patch_with_fewer_scores_removes_the_missing_one(pool: PgPool) {
+    // #4: el cliente manda SIEMPRE el set completo. Si un score desaparece del
+    // payload, debe borrarse del servidor (no quedar huérfano).
+    let (j_id, tok) = jurado(&pool).await;
+    let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
+    let p = insert_prototipo(&pool, e, "F", "P").await;
+    let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
+    let (_, c1) = seed_section_with_criterion(&pool, r, 1, "C1", 3).await;
+    let (_, c2) = seed_section_with_criterion(&pool, r, 2, "C2", 3).await;
+    assign_jurado(&pool, j_id, p, r).await;
+
+    // Creamos con scores para c1 y c2.
+    let created = post_eval(
+        pool.clone(),
+        &tok,
+        json!({
+            "prototipo_id": p, "template_id": r,
+            "scores": [
+                { "criterion_id": c1, "score": 2 },
+                { "criterion_id": c2, "score": 3 }
+            ]
+        }),
+    )
+    .await;
+    let id = created["id"].as_str().unwrap().to_string();
+
+    // PATCH con SÓLO c1: c2 debe desaparecer del servidor.
+    let (status, body) = patch_eval(
+        pool.clone(),
+        &id,
+        Some(&tok),
+        json!({ "scores": [{ "criterion_id": c1, "score": 1 }] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+
+    // Sólo queda una fila, la de c1, con su nuevo valor.
+    let scores = body["scores"].as_array().unwrap();
+    assert_eq!(scores.len(), 1);
+    assert_eq!(scores[0]["criterion_id"], json!(c1));
+    assert_eq!(scores[0]["score"], 1);
+
+    let rows: Vec<(Uuid, i32)> = sqlx::query_as(
+        "SELECT criterion_id, score FROM evaluacion_scores WHERE evaluacion_id = $1::uuid",
+    )
+    .bind(Uuid::parse_str(&id).unwrap())
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(rows.len(), 1, "el score de c2 debe haberse eliminado");
+    assert_eq!(rows[0].0, c1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn patch_with_empty_scores_clears_all(pool: PgPool) {
+    // #4 borde: scores:[] (array vacío, NO ausente) significa "el set completo
+    // está vacío" ⇒ se borran TODAS las filas. Distinto de omitir `scores`
+    // (None), que las deja intactas.
+    let (j_id, tok) = jurado(&pool).await;
+    let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
+    let p = insert_prototipo(&pool, e, "F", "P").await;
+    let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
+    let (_, c1) = seed_section_with_criterion(&pool, r, 1, "C1", 3).await;
+    let (_, c2) = seed_section_with_criterion(&pool, r, 2, "C2", 3).await;
+    assign_jurado(&pool, j_id, p, r).await;
+
+    let created = post_eval(
+        pool.clone(),
+        &tok,
+        json!({
+            "prototipo_id": p, "template_id": r,
+            "scores": [
+                { "criterion_id": c1, "score": 2 },
+                { "criterion_id": c2, "score": 3 }
+            ]
+        }),
+    )
+    .await;
+    let id = created["id"].as_str().unwrap().to_string();
+
+    let (status, body) = patch_eval(pool.clone(), &id, Some(&tok), json!({ "scores": [] })).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(
+        body["scores"].as_array().unwrap().len(),
+        0,
+        "scores:[] debe vaciar el set: {body}"
+    );
+
+    let rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM evaluacion_scores WHERE evaluacion_id = $1::uuid")
+            .bind(Uuid::parse_str(&id).unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(rows, 0, "todas las filas de score deben haberse borrado");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn patch_metadata_only_leaves_scores_untouched(pool: PgPool) {
     let (j_id, tok) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     let (_, c1) = seed_section_with_criterion(&pool, r, 1, "C", 3).await;
@@ -130,6 +232,7 @@ async fn patch_metadata_only_leaves_scores_untouched(pool: PgPool) {
 async fn patch_is_409_after_submit(pool: PgPool) {
     let (j_id, tok) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     assign_jurado(&pool, j_id, p, r).await;
@@ -149,14 +252,17 @@ async fn patch_is_409_after_submit(pool: PgPool) {
         .await
         .unwrap();
 
-    let (status, _) = patch_eval(pool, &id, Some(&tok), json!({ "observaciones": "tarde" })).await;
+    let (status, body) =
+        patch_eval(pool, &id, Some(&tok), json!({ "observaciones": "tarde" })).await;
     assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["code"], "already_submitted", "body: {body}");
 }
 
 #[sqlx::test(migrations = "../../migrations")]
 async fn other_jurado_gets_403(pool: PgPool) {
     let (j1, t1) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     assign_jurado(&pool, j1, p, r).await;
@@ -179,6 +285,7 @@ async fn other_jurado_gets_403(pool: PgPool) {
 async fn patch_rejects_invalid_score(pool: PgPool) {
     let (j_id, tok) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     let (_, c1) = seed_section_with_criterion(&pool, r, 1, "C", 3).await;

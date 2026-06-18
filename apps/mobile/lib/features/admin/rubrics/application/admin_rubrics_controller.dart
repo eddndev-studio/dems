@@ -83,6 +83,7 @@ class AdminRubricsController extends AsyncNotifier<List<RubricSummary>> {
     required String nombre,
     required RubricType tipo,
     String? descripcion,
+    int? peso,
     required List<String> categorias,
     required List<Map<String, dynamic>> sections,
   }) async {
@@ -91,6 +92,7 @@ class AdminRubricsController extends AsyncNotifier<List<RubricSummary>> {
           nombre: nombre,
           tipo: tipo,
           descripcion: descripcion,
+          peso: peso,
           categorias: categorias,
           sections: sections,
         );

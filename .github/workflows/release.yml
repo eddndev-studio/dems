@@ -7,13 +7,16 @@ name: release-app
 #   - push de un tag `v*`  -> compila y crea un GitHub Release con los artefactos.
 #   - manual (workflow_dispatch) -> compila y sube los artefactos al run.
 #
-# FIRMA: el buildType release usa la llave debug (apps/mobile/android/app/build.gradle.kts).
-# Los APK/AAB son instalables por sideload, pero NO aptos para Play Store ni para
-# actualizar sobre una versión firmada con otra llave. Para firma real:
-#   1. Subir secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
-#      ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
-#   2. Añadir signingConfig "release" en build.gradle.kts leyendo key.properties.
-#   3. Materializar keystore + key.properties en este workflow antes del build.
+# FIRMA: el buildType release usa el signingConfig "release" si existe key.properties,
+# y cae a la llave debug si no (ver apps/mobile/android/app/build.gradle.kts).
+# Para FIRMA REAL (Play Store / updates in-place), sube estos secrets en GitHub:
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
+# El paso "Materializar keystore" de abajo decodifica el keystore y escribe key.properties
+# automáticamente cuando el secret existe; sin secrets, el build sigue firmando con debug.
+#   Generar keystore + base64:
+#     keytool -genkeypair -v -keystore dems-release.jks -keyalg RSA -keysize 2048 \
+#       -validity 10000 -alias dems
+#     base64 -w0 dems-release.jks   # -> pega el resultado en ANDROID_KEYSTORE_BASE64
 
 on:
   workflow_dispatch:
@@ -41,6 +44,9 @@ env:
   API_BASE_URL: https://dems.eddndev.work
   ANDROID_SDK_ROOT: /opt/android-sdk
   ANDROID_HOME: /opt/android-sdk
+  # Espejo de los secrets a env para poder usarlos en `if:` (el contexto secrets
+  # no está disponible en condicionales; env sí).
+  ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
 
 jobs:
   build:
@@ -61,6 +67,22 @@ jobs:
 
       - name: Apuntar Flutter al SDK de Android del runner
         run: flutter config --android-sdk "$ANDROID_SDK_ROOT"
+
+      - name: Materializar keystore Android (si hay secrets)
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
+        env:
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/dems-release.jks"
+          cat > android/key.properties <<EOF
+          storeFile=$RUNNER_TEMP/dems-release.jks
+          storePassword=$KS_PASS
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASS
+          EOF
+          echo "key.properties escrito — el build firmará con el keystore release."
 
       - name: Derivar versión
         id: ver
@@ -120,8 +142,9 @@ jobs:
           body: |
             App DEMS — release ${{ github.ref_name }} (API → https://dems.eddndev.work).
 
-            ⚠️ APK/AAB firmados con la llave **debug** (sideload OK; Play Store y
-            actualizaciones in-place requieren un keystore propio — ver cabecera del workflow).
+            Firma: keystore **release** si están los secrets de firma; de lo contrario,
+            llave **debug** (sideload OK; Play Store / updates in-place requieren el
+            keystore propio — ver cabecera del workflow).
           files: |
             apps/mobile/build/app/outputs/flutter-apk/app-release.apk
             apps/mobile/build/app/outputs/bundle/release/app-release.aab

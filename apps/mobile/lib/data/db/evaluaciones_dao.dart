@@ -155,6 +155,22 @@ class EvaluacionesDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
+  /// Fija el [serverId] tras un CREATE pero CONSERVA el flag dirty. Se usa en el
+  /// camino de replay idempotente (#3): primero asociamos el id del servidor y
+  /// luego empujamos los scores con un PATCH; si ese PATCH falla por red, la
+  /// fila sigue dirty y se reintenta (no se pierden scores).
+  Future<void> onCreatedRemoteKeepDirty({
+    required String localId,
+    required String serverId,
+  }) {
+    return (update(evaluaciones)..where((e) => e.id.equals(localId))).write(
+      EvaluacionesCompanion(
+        serverId: Value(serverId),
+        lastError: const Value(null),
+      ),
+    );
+  }
+
   Future<void> onPatchedRemote(String localId) {
     return (update(evaluaciones)..where((e) => e.id.equals(localId))).write(
       EvaluacionesCompanion(
@@ -168,6 +184,25 @@ class EvaluacionesDao extends DatabaseAccessor<AppDatabase>
   Future<void> onSubmittedRemote({
     required String localId,
     required DateTime submittedAt,
+  }) {
+    return (update(evaluaciones)..where((e) => e.id.equals(localId))).write(
+      EvaluacionesCompanion(
+        submittedAt: Value(submittedAt),
+        submitRequested: const Value(false),
+        dirty: const Value(false),
+        syncedAt: Value(DateTime.now().toUtc()),
+        lastError: const Value(null),
+      ),
+    );
+  }
+
+  /// Reconcilia la fila local con el estado autoritativo del servidor tras un
+  /// 409 (p.ej. PATCH sobre una evaluación ya enviada): fija el [submittedAt]
+  /// remoto, deja de pedir submit y limpia el flag dirty (el servidor manda).
+  /// Tras esto la fila ya no debe quedar pending.
+  Future<void> onReconciledFromRemote({
+    required String localId,
+    required DateTime? submittedAt,
   }) {
     return (update(evaluaciones)..where((e) => e.id.equals(localId))).write(
       EvaluacionesCompanion(

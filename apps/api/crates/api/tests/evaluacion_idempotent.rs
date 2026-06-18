@@ -8,11 +8,10 @@ use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use tower::ServiceExt;
-use uuid::Uuid;
 
 use common::{
     assign_jurado, build_app, insert_prototipo, insert_user, jurado, seed_edition,
-    seed_rubric_template, seed_section_with_criterion, token_for,
+    seed_rubric_template, seed_section_with_criterion, set_edition_phase, token_for,
 };
 use dems_api::auth::TokenKind;
 use dems_core::models::UserRole;
@@ -37,6 +36,7 @@ async fn post_eval(pool: PgPool, tok: &str, body: Value) -> (StatusCode, Value) 
 async fn repeat_with_same_client_id_returns_existing(pool: PgPool) {
     let (jurado_id, tok) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F-01", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     assign_jurado(&pool, jurado_id, p, r).await;
@@ -67,6 +67,46 @@ async fn repeat_with_same_client_id_returns_existing(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn same_client_id_different_triple_is_409(pool: PgPool) {
+    // #7: el cliente reutilizó un client_id que ya había usado para OTRA
+    // (prototipo, template). No es un replay legítimo — el id se reusó mal, y
+    // devolver la evaluación vieja silenciosamente ocultaría el bug. 409.
+    let (j_id, tok) = jurado(&pool).await;
+    let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
+    let p1 = insert_prototipo(&pool, e, "F-01", "P1").await;
+    let p2 = insert_prototipo(&pool, e, "F-02", "P2").await;
+    let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
+    assign_jurado(&pool, j_id, p1, r).await;
+    assign_jurado(&pool, j_id, p2, r).await;
+
+    let (s1, _) = post_eval(
+        pool.clone(),
+        &tok,
+        json!({ "prototipo_id": p1, "template_id": r, "client_id": "dup-cid" }),
+    )
+    .await;
+    assert_eq!(s1, StatusCode::CREATED);
+
+    // Mismo client_id, distinto prototipo ⇒ 409.
+    let (s2, body) = post_eval(
+        pool.clone(),
+        &tok,
+        json!({ "prototipo_id": p2, "template_id": r, "client_id": "dup-cid" }),
+    )
+    .await;
+    assert_eq!(s2, StatusCode::CONFLICT, "body: {body}");
+    assert_eq!(body["code"], "client_id_reused", "body: {body}");
+
+    // No se creó nada nuevo: sólo la primera evaluación existe.
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM evaluaciones")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn different_client_id_same_triple_is_409(pool: PgPool) {
     // La app offline perdió su estado local y reintentó con un client_id
     // nuevo, pero el servidor ya había aceptado la evaluación original.
@@ -74,6 +114,7 @@ async fn different_client_id_same_triple_is_409(pool: PgPool) {
     // usuario) en lugar de crear silenciosamente un duplicado.
     let (jurado_id, tok) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F-01", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     assign_jurado(&pool, jurado_id, p, r).await;
@@ -86,13 +127,16 @@ async fn different_client_id_same_triple_is_409(pool: PgPool) {
     .await;
     assert!(first["id"].is_string());
 
-    let (status, _) = post_eval(
+    let (status, body) = post_eval(
         pool,
         &tok,
         json!({ "prototipo_id": p, "template_id": r, "client_id": "cid-2" }),
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT);
+    // Este 409 viene del choque de unicidad de la terna (otro client_id), NO de
+    // la reutilización de client_id: el contrato lo deja sin `code`.
+    assert_ne!(body["code"], "client_id_reused", "body: {body}");
 }
 
 #[sqlx::test(migrations = "../../migrations")]
@@ -104,6 +148,7 @@ async fn client_id_is_scoped_per_jurado(pool: PgPool) {
     let t2 = token_for(j2_id, UserRole::Jurado, 900, TokenKind::Access);
 
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F-01", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     assign_jurado(&pool, j1_id, p, r).await;
@@ -127,6 +172,7 @@ async fn client_id_is_scoped_per_jurado(pool: PgPool) {
 async fn replay_with_scores_does_not_duplicate_them(pool: PgPool) {
     let (jurado_id, tok) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F-01", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     let (_, c1) = seed_section_with_criterion(&pool, r, 1, "C", 3).await;
@@ -150,6 +196,7 @@ async fn replay_with_scores_does_not_duplicate_them(pool: PgPool) {
 async fn create_without_client_id_still_works(pool: PgPool) {
     let (jurado_id, tok) = jurado(&pool).await;
     let e = seed_edition(&pool, 2024).await;
+    set_edition_phase(&pool, e, "evaluacion").await;
     let p = insert_prototipo(&pool, e, "F-01", "P").await;
     let r = seed_rubric_template(&pool, e, "R", "exhibicion").await;
     assign_jurado(&pool, jurado_id, p, r).await;
