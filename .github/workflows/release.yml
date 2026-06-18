@@ -7,16 +7,14 @@ name: release-app
 #   - push de un tag `v*`  -> compila y crea un GitHub Release con los artefactos.
 #   - manual (workflow_dispatch) -> compila y sube los artefactos al run.
 #
-# FIRMA: el buildType release usa el signingConfig "release" si existe key.properties,
-# y cae a la llave debug si no (ver apps/mobile/android/app/build.gradle.kts).
-# Para FIRMA REAL (Play Store / updates in-place), sube estos secrets en GitHub:
-#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
-# El paso "Materializar keystore" de abajo decodifica el keystore y escribe key.properties
-# automáticamente cuando el secret existe; sin secrets, el build sigue firmando con debug.
-#   Generar keystore + base64:
-#     keytool -genkeypair -v -keystore dems-release.jks -keyalg RSA -keysize 2048 \
-#       -validity 10000 -alias dems
-#     base64 -w0 dems-release.jks   # -> pega el resultado en ANDROID_KEYSTORE_BASE64
+# FIRMA: corre en VPS2 (self-hosted), donde vive el keystore. El buildType release
+# usa el signingConfig "release" leyendo apps/mobile/android/key.properties (ver
+# build.gradle.kts); si no existe, cae a la llave debug.
+# El paso "Firma — copiar key.properties del runner" copia tu key.properties (que
+# vive FUERA del checkout en VPS2) a android/key.properties antes de compilar.
+# Configura la ruta como repo VARIABLE (no secret):
+#   Settings → Secrets and variables → Actions → Variables → DEMS_KEY_PROPERTIES_PATH
+# Ese key.properties debe apuntar (storeFile) al .jks en una ruta ABSOLUTA del runner.
 
 on:
   workflow_dispatch:
@@ -42,16 +40,18 @@ concurrency:
 
 env:
   API_BASE_URL: https://dems.eddndev.work
-  # Espejo de los secrets a env para poder usarlos en `if:` (el contexto secrets
-  # no está disponible en condicionales; env sí).
-  ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+  ANDROID_SDK_ROOT: /opt/android-sdk
+  ANDROID_HOME: /opt/android-sdk
+  # Ruta (en VPS2) del key.properties de firma, FUERA del checkout (actions/checkout
+  # con clean borra los archivos gitignored). Configúrala como repo VARIABLE:
+  # Settings → Secrets and variables → Actions → Variables → DEMS_KEY_PROPERTIES_PATH
+  DEMS_KEY_PROPERTIES_PATH: ${{ vars.DEMS_KEY_PROPERTIES_PATH }}
 
 jobs:
   build:
     name: build release (android + web)
-    # GitHub-hosted: el self-hosted cancelaba el build de APK por contención;
-    # ubuntu-latest trae el Android SDK preinstalado (ANDROID_HOME ya seteado).
-    runs-on: ubuntu-latest
+    # En VPS2 (self-hosted): aquí viven el keystore de firma y el Android SDK.
+    runs-on: [self-hosted, vps2]
     defaults:
       run:
         working-directory: apps/mobile
@@ -65,21 +65,17 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Materializar keystore Android (si hay secrets)
-        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
-        env:
-          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      - name: Apuntar Flutter al SDK de Android del runner
+        run: flutter config --android-sdk "$ANDROID_SDK_ROOT"
+
+      - name: Firma — copiar key.properties del runner
         run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/dems-release.jks"
-          cat > android/key.properties <<EOF
-          storeFile=$RUNNER_TEMP/dems-release.jks
-          storePassword=$KS_PASS
-          keyAlias=$KEY_ALIAS
-          keyPassword=$KEY_PASS
-          EOF
-          echo "key.properties escrito — el build firmará con el keystore release."
+          if [ -n "${DEMS_KEY_PROPERTIES_PATH:-}" ] && [ -f "$DEMS_KEY_PROPERTIES_PATH" ]; then
+            cp "$DEMS_KEY_PROPERTIES_PATH" android/key.properties
+            echo "key.properties copiado desde $DEMS_KEY_PROPERTIES_PATH — firma con keystore release."
+          else
+            echo "::warning title=Sin key.properties::DEMS_KEY_PROPERTIES_PATH no definido o el archivo no existe ('${DEMS_KEY_PROPERTIES_PATH:-}'). El APK/AAB firmará con DEBUG. Define la repo variable con la ruta del key.properties en VPS2."
+          fi
 
       - name: Derivar versión
         id: ver
@@ -139,9 +135,10 @@ jobs:
           body: |
             App DEMS — release ${{ github.ref_name }} (API → https://dems.eddndev.work).
 
-            Firma: keystore **release** si están los secrets de firma; de lo contrario,
-            llave **debug** (sideload OK; Play Store / updates in-place requieren el
-            keystore propio — ver cabecera del workflow).
+            Firma: keystore **release** de VPS2 si la repo variable
+            DEMS_KEY_PROPERTIES_PATH apunta a tu key.properties; si no, llave
+            **debug** (sideload OK; Play Store / updates in-place requieren la
+            llave propia — ver cabecera del workflow).
           files: |
             apps/mobile/build/app/outputs/flutter-apk/app-release.apk
             apps/mobile/build/app/outputs/bundle/release/app-release.aab
