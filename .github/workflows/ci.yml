@@ -13,7 +13,10 @@ concurrency:
 jobs:
   api:
     name: api (rust + postgres)
-    runs-on: [self-hosted, vps2]
+    # GitHub-hosted: el self-hosted tiene un entorno Rust inconsistente (rustup
+    # ausente en algunos runners -> el job falla intermitentemente al instalar
+    # el toolchain). ubuntu-latest trae rustup y corre el servicio postgres.
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/api
