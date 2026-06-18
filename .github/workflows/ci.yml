@@ -106,3 +106,40 @@ jobs:
 
       - name: flutter test
         run: flutter test
+
+  deploy:
+    name: deploy (vps2)
+    needs: [api, mobile]
+    # Solo en push a main (tras merge), nunca en PRs.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: [self-hosted, vps2]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # El runner corre en VPS2 → deploy local. /opt/dems es propiedad de
+      # github-runner; deploy/.env (secrets) persiste y se excluye del sync.
+      - name: Sync source to /opt/dems
+        run: |
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude 'deploy/.env' \
+            --exclude 'apps/mobile' \
+            --exclude 'target' \
+            "$GITHUB_WORKSPACE"/ /opt/dems/
+
+      - name: Build image & restart stack
+        working-directory: /opt/dems/deploy
+        run: docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 5 http://127.0.0.1:8090/readyz | grep -q '"db":true'; then
+              echo "API healthy after deploy"; exit 0
+            fi
+            echo "waiting for API... ($i)"; sleep 3
+          done
+          echo "::error::API did not become healthy after deploy"
+          docker logs dems-api --tail 80 || true
+          exit 1
