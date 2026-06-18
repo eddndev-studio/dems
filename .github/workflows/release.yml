@@ -7,14 +7,16 @@ name: release-app
 #   - push de un tag `v*`  -> compila y crea un GitHub Release con los artefactos.
 #   - manual (workflow_dispatch) -> compila y sube los artefactos al run.
 #
-# FIRMA: corre en VPS2 (self-hosted), donde vive el keystore. El buildType release
-# usa el signingConfig "release" leyendo apps/mobile/android/key.properties (ver
-# build.gradle.kts); si no existe, cae a la llave debug.
-# El paso "Firma — copiar key.properties del runner" copia tu key.properties (que
-# vive FUERA del checkout en VPS2) a android/key.properties antes de compilar.
-# Configura la ruta como repo VARIABLE (no secret):
-#   Settings → Secrets and variables → Actions → Variables → DEMS_KEY_PROPERTIES_PATH
-# Ese key.properties debe apuntar (storeFile) al .jks en una ruta ABSOLUTA del runner.
+# FIRMA (mismo patrón que ataulfo-app): corre en VPS2 (self-hosted). El keystore y
+# sus contraseñas viven en repo SECRETS; el paso "Restaurar keystore de release"
+# materializa key.properties + .jks en el workspace antes de compilar y el paso
+# "Limpiar material de firma" los borra al final. build.gradle.kts firma el release
+# leyendo apps/mobile/android/key.properties (cae a debug sólo en build local sin él).
+# SECRETS REQUERIDOS (Settings → Secrets and variables → Actions → Secrets):
+#   ANDROID_KEYSTORE_BASE64    el .jks en base64:  base64 -w0 mi-keystore.jks
+#   ANDROID_KEYSTORE_PASSWORD  contraseña del store
+#   ANDROID_KEY_ALIAS          alias de la llave
+#   ANDROID_KEY_PASSWORD       contraseña de la llave
 
 on:
   workflow_dispatch:
@@ -42,10 +44,6 @@ env:
   API_BASE_URL: https://dems.eddndev.work
   ANDROID_SDK_ROOT: /opt/android-sdk
   ANDROID_HOME: /opt/android-sdk
-  # Ruta (en VPS2) del key.properties de firma, FUERA del checkout (actions/checkout
-  # con clean borra los archivos gitignored). Configúrala como repo VARIABLE:
-  # Settings → Secrets and variables → Actions → Variables → DEMS_KEY_PROPERTIES_PATH
-  DEMS_KEY_PROPERTIES_PATH: ${{ vars.DEMS_KEY_PROPERTIES_PATH }}
 
 jobs:
   build:
@@ -68,14 +66,29 @@ jobs:
       - name: Apuntar Flutter al SDK de Android del runner
         run: flutter config --android-sdk "$ANDROID_SDK_ROOT"
 
-      - name: Firma — copiar key.properties del runner
+      # Mismo patrón que ataulfo-app: el keystore + contraseñas viven en repo
+      # Secrets (cifrados). Se materializan key.properties + .jks en el workspace
+      # y se borran al final (el workspace self-hosted persiste entre runs).
+      - name: Restaurar keystore de release (firma)
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
-          if [ -n "${DEMS_KEY_PROPERTIES_PATH:-}" ] && [ -f "$DEMS_KEY_PROPERTIES_PATH" ]; then
-            cp "$DEMS_KEY_PROPERTIES_PATH" android/key.properties
-            echo "key.properties copiado desde $DEMS_KEY_PROPERTIES_PATH — firma con keystore release."
-          else
-            echo "::warning title=Sin key.properties::DEMS_KEY_PROPERTIES_PATH no definido o el archivo no existe ('${DEMS_KEY_PROPERTIES_PATH:-}'). El APK/AAB firmará con DEBUG. Define la repo variable con la ruta del key.properties en VPS2."
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error title=Falta el keystore::Define el secret ANDROID_KEYSTORE_BASE64 (+ _PASSWORD/_KEY_PASSWORD/_KEY_ALIAS) — mismo patrón que ataulfo-app. Sin él no se firma el release."
+            exit 1
           fi
+          KS="$GITHUB_WORKSPACE/apps/mobile/android/app/upload-keystore.jks"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KS"
+          {
+            echo "storeFile=$KS"
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "keyPassword=$ANDROID_KEY_PASSWORD"
+          } > android/key.properties
+          echo "key.properties + keystore restaurados — firma de release lista."
 
       - name: Derivar versión
         id: ver
@@ -135,11 +148,15 @@ jobs:
           body: |
             App DEMS — release ${{ github.ref_name }} (API → https://dems.eddndev.work).
 
-            Firma: keystore **release** de VPS2 si la repo variable
-            DEMS_KEY_PROPERTIES_PATH apunta a tu key.properties; si no, llave
-            **debug** (sideload OK; Play Store / updates in-place requieren la
-            llave propia — ver cabecera del workflow).
+            Firmado con el keystore de release (desde repo Secrets, igual que
+            ataulfo-app). Apto para distribución / updates in-place.
           files: |
             apps/mobile/build/app/outputs/flutter-apk/app-release.apk
             apps/mobile/build/app/outputs/bundle/release/app-release.aab
             apps/mobile/build/dems-web.tar.gz
+
+      - name: Limpiar material de firma del workspace
+        if: always()
+        run: |
+          rm -f "$GITHUB_WORKSPACE/apps/mobile/android/app/upload-keystore.jks" \
+                "$GITHUB_WORKSPACE/apps/mobile/android/key.properties"
