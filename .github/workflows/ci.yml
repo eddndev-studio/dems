@@ -25,8 +25,12 @@ jobs:
           POSTGRES_USER: dems
           POSTGRES_PASSWORD: dems
           POSTGRES_DB: dems
+        # Host port efímero: el runner self-hosted es compartido y un puerto
+        # fijo (5433) colisiona con contenedores huérfanos de runs canceladas
+        # ("port is already allocated"). Docker asigna un puerto libre y lo
+        # leemos vía job.services.postgres.ports['5432'].
         ports:
-          - 5433:5432
+          - 5432
         options: >-
           --health-cmd pg_isready
           --health-interval 5s
@@ -34,12 +38,14 @@ jobs:
           --health-retries 10
 
     env:
-      DATABASE_URL: postgres://dems:dems@localhost:5433/dems
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: 1
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: DATABASE_URL (puerto efímero del servicio postgres)
+        run: echo "DATABASE_URL=postgres://dems:dems@localhost:${{ job.services.postgres.ports['5432'] }}/dems" >> "$GITHUB_ENV"
 
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@stable
