@@ -226,8 +226,10 @@ pub async fn by_categoria(
         .collect();
 
     // Ranking: promedio desc, los sin evaluaciones al final.
-    prototipos.sort_by(|a, b| match (b.promedio, a.promedio) {
-        (Some(bp), Some(ap)) => bp.partial_cmp(&ap).unwrap_or(std::cmp::Ordering::Equal),
+    prototipos.sort_by(|a, b| match (a.promedio, b.promedio) {
+        (Some(ap), Some(bp)) => bp.partial_cmp(&ap)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.folio.cmp(&b.folio)),
         (Some(_), None) => std::cmp::Ordering::Less,
         (None, Some(_)) => std::cmp::Ordering::Greater,
         (None, None) => a.folio.cmp(&b.folio),

@@ -41,6 +41,7 @@ dependencies:
   connectivity_plus: ^6.1.0
 
   # Utilities
+  share_plus: ^10.1.0
   freezed_annotation: ^3.1.0
   json_annotation: ^4.9.0
   uuid: ^4.5.1
