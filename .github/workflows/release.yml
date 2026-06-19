@@ -77,8 +77,8 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "::error title=Falta el keystore::Define el secret ANDROID_KEYSTORE_BASE64 (+ _PASSWORD/_KEY_PASSWORD/_KEY_ALIAS) — mismo patrón que ataulfo-app. Sin él no se firma el release."
-            exit 1
+            echo "::warning title=Sin keystore::No hay ANDROID_KEYSTORE_BASE64; el release se compila con firma DEBUG (no apto para Play Store ni update in-place sobre un build firmado). Define los secrets para firma de release."
+            exit 0
           fi
           KS="$GITHUB_WORKSPACE/apps/mobile/android/app/upload-keystore.jks"
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KS"
@@ -148,8 +148,9 @@ jobs:
           body: |
             App DEMS — release ${{ github.ref_name }} (API → https://dems.eddndev.work).
 
-            Firmado con el keystore de release (desde repo Secrets, igual que
-            ataulfo-app). Apto para distribución / updates in-place.
+            Firma: si están definidos los secrets ANDROID_KEYSTORE_BASE64 (+ passwords/alias)
+            el APK/AAB van firmados de release; si no, caen a firma DEBUG (instalable para
+            pruebas, pero no apto para Play Store ni update in-place sobre un build firmado).
           files: |
             apps/mobile/build/app/outputs/flutter-apk/app-release.apk
             apps/mobile/build/app/outputs/bundle/release/app-release.aab
