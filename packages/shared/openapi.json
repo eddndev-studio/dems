@@ -118,6 +118,48 @@
         ]
       }
     },
+    "/admin/assignments/bulk": {
+      "post": {
+        "tags": [
+          "admin/assignments"
+        ],
+        "summary": "Asigna un conjunto de jurados a TODOS los prototipos de una categoría dentro\nde la edición del template. Es la forma práctica de cubrir el \"área\" de la\nexhibición: muchos jurados evalúan cada prototipo de su categoría sin\nasignar uno por uno. Idempotente (las asignaciones existentes se respetan).",
+        "operationId": "bulk",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkAssignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Resumen de la asignación masiva",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkAssignResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Sólo admin"
+          },
+          "422": {
+            "description": "jurado_ids vacío, algún id no es jurado, o categoría/template desconocidos"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/admin/categorias": {
       "get": {
         "tags": [
@@ -740,13 +782,12 @@
         ]
       }
     },
-    "/admin/results/edition/{id}/export.csv": {
+    "/admin/results/edition/{id}/export.xlsx": {
       "get": {
         "tags": [
           "admin/results"
         ],
-        "summary": "CSV con todos los prototipos de la edición. Una fila por (categoría,\nprototipo). Promedio sobre evaluaciones submitted del rubric_type\nsolicitado.",
-        "operationId": "export_csv",
+        "operationId": "export_excel",
         "parameters": [
           {
             "name": "id",
@@ -770,9 +811,9 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV de resultados",
+            "description": "Excel de resultados",
             "content": {
-              "text/csv": {}
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
             }
           },
           "400": {
@@ -1809,6 +1850,63 @@
           }
         }
       },
+      "BulkAssignRequest": {
+        "type": "object",
+        "required": [
+          "categoria_id",
+          "template_id",
+          "jurado_ids"
+        ],
+        "properties": {
+          "categoria_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jurado_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Jurados a asignar a cada prototipo de la categoría."
+          },
+          "template_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "BulkAssignResult": {
+        "type": "object",
+        "required": [
+          "created",
+          "skipped",
+          "prototipos",
+          "jurados"
+        ],
+        "properties": {
+          "created": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Asignaciones realmente creadas (las que ya existían no se recrean)."
+          },
+          "jurados": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Jurados únicos en la petición."
+          },
+          "prototipos": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Prototipos de la categoría en la edición del template."
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Combinaciones (jurado × prototipo) que ya existían y se omitieron."
+          }
+        }
+      },
       "CategoriaRef": {
         "type": "object",
         "required": [
@@ -2041,12 +2139,6 @@
           },
           "nombre": {
             "type": "string"
-          },
-          "plantel": {
-            "type": [
-              "string",
-              "null"
-            ]
           }
         }
       },
@@ -2584,12 +2676,6 @@
               "string",
               "null"
             ]
-          },
-          "plantel": {
-            "type": [
-              "string",
-              "null"
-            ]
           }
         }
       },
@@ -2722,12 +2808,6 @@
           },
           "nombre": {
             "type": "string"
-          },
-          "plantel": {
-            "type": [
-              "string",
-              "null"
-            ]
           }
         }
       },
@@ -2783,12 +2863,6 @@
           },
           "nombre": {
             "type": "string"
-          },
-          "plantel": {
-            "type": [
-              "string",
-              "null"
-            ]
           }
         }
       },

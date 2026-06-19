@@ -161,6 +161,157 @@ pub async fn create(
 }
 
 // ---------------------------------------------------------------------------
+// Bulk assign: jurados → todos los prototipos de una categoría (= área)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct BulkAssignRequest {
+    pub categoria_id: Uuid,
+    pub template_id: Uuid,
+    /// Jurados a asignar a cada prototipo de la categoría.
+    pub jurado_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BulkAssignResult {
+    /// Asignaciones realmente creadas (las que ya existían no se recrean).
+    pub created: i64,
+    /// Combinaciones (jurado × prototipo) que ya existían y se omitieron.
+    pub skipped: i64,
+    /// Prototipos de la categoría en la edición del template.
+    pub prototipos: i64,
+    /// Jurados únicos en la petición.
+    pub jurados: i64,
+}
+
+/// Asigna un conjunto de jurados a TODOS los prototipos de una categoría dentro
+/// de la edición del template. Es la forma práctica de cubrir el "área" de la
+/// exhibición: muchos jurados evalúan cada prototipo de su categoría sin
+/// asignar uno por uno. Idempotente (las asignaciones existentes se respetan).
+#[utoipa::path(
+    post,
+    path = "/admin/assignments/bulk",
+    tag = "admin/assignments",
+    request_body = BulkAssignRequest,
+    responses(
+        (status = 200, description = "Resumen de la asignación masiva", body = BulkAssignResult),
+        (status = 422, description = "jurado_ids vacío, algún id no es jurado, o categoría/template desconocidos"),
+        (status = 403, description = "Sólo admin"),
+    ),
+    security(("bearer_auth" = [])),
+)]
+pub async fn bulk(
+    State(state): State<AppState>,
+    _: RequireAdmin,
+    Json(req): Json<BulkAssignRequest>,
+) -> ApiResult<impl IntoResponse> {
+    if req.jurado_ids.is_empty() {
+        return Err(ApiError::Core(dems_core::CoreError::Validation(
+            "jurado_ids must not be empty".into(),
+        )));
+    }
+
+    // Dedup de jurado_ids para que los contadores sean exactos.
+    let jurado_ids: Vec<Uuid> = {
+        let mut seen = std::collections::HashSet::new();
+        req.jurado_ids
+            .iter()
+            .copied()
+            .filter(|id| seen.insert(*id))
+            .collect()
+    };
+
+    // El template define la edición; debe existir.
+    let edition_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT edition_id FROM rubric_templates WHERE id = $1")
+            .bind(req.template_id)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+    let Some(edition_id) = edition_id else {
+        return Err(ApiError::Core(dems_core::CoreError::Validation(
+            "template_id unknown".into(),
+        )));
+    };
+
+    // La categoría debe existir.
+    let categoria_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM categorias WHERE id = $1)")
+            .bind(req.categoria_id)
+            .fetch_one(&state.pool)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+    if !categoria_exists {
+        return Err(ApiError::Core(dems_core::CoreError::Validation(
+            "categoria_id unknown".into(),
+        )));
+    }
+
+    // Todos los ids deben ser usuarios con rol jurado (los desconocidos también
+    // caen aquí, igual que el create individual rechaza no-jurados).
+    let non_jurado: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM unnest($1::uuid[]) AS t(id)
+           WHERE NOT EXISTS (
+               SELECT 1 FROM users u WHERE u.id = t.id AND u.role = 'jurado'::user_role
+           )"#,
+    )
+    .bind(&jurado_ids)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+    if non_jurado > 0 {
+        return Err(ApiError::Core(dems_core::CoreError::Validation(
+            "every jurado_id must be an existing user with role 'jurado'".into(),
+        )));
+    }
+
+    // Prototipos de la categoría en la edición del template.
+    let prototipos: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM prototipos p
+           JOIN prototipo_categorias pc ON pc.prototipo_id = p.id
+           WHERE p.edition_id = $1 AND pc.categoria_id = $2"#,
+    )
+    .bind(edition_id)
+    .bind(req.categoria_id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    // Inserción masiva del producto (jurado × prototipo), idempotente.
+    let created = sqlx::query(
+        r#"INSERT INTO assignments (jurado_id, prototipo_id, template_id)
+           SELECT j.id, proto.id, $3
+           FROM unnest($1::uuid[]) AS j(id)
+           CROSS JOIN (
+               SELECT p.id FROM prototipos p
+               JOIN prototipo_categorias pc ON pc.prototipo_id = p.id
+               WHERE p.edition_id = $4 AND pc.categoria_id = $2
+           ) AS proto
+           ON CONFLICT (jurado_id, prototipo_id, template_id) DO NOTHING"#,
+    )
+    .bind(&jurado_ids)
+    .bind(req.categoria_id)
+    .bind(req.template_id)
+    .bind(edition_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?
+    .rows_affected() as i64;
+
+    let jurados = jurado_ids.len() as i64;
+    let attempted = jurados * prototipos;
+    Ok((
+        StatusCode::OK,
+        Json(BulkAssignResult {
+            created,
+            skipped: attempted - created,
+            prototipos,
+            jurados,
+        }),
+    ))
+}
+
+// ---------------------------------------------------------------------------
 // List for a prototipo
 // ---------------------------------------------------------------------------
 

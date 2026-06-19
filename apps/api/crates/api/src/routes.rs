@@ -105,6 +105,7 @@ pub fn router(state: AppState) -> Router {
             "/admin/assignments",
             post(admin_assignments::create).delete(admin_assignments::delete),
         )
+        .route("/admin/assignments/bulk", post(admin_assignments::bulk))
         .route(
             "/admin/rubric-templates",
             get(admin_rubrics::list).post(admin_rubrics::create),
