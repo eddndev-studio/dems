@@ -57,6 +57,30 @@ class AdminAssignmentsRepository {
     }
   }
 
+  /// Asigna varios jurados a TODOS los prototipos de una categoría (en la
+  /// edición del template). Idempotente; devuelve el resumen de creadas/saltadas.
+  Future<BulkAssignResult> bulkAssign({
+    required List<String> juradoIds,
+    required String categoriaId,
+    required String templateId,
+  }) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/admin/assignments/bulk',
+        data: {
+          'categoria_id': categoriaId,
+          'template_id': templateId,
+          'jurado_ids': juradoIds,
+        },
+      );
+      return BulkAssignResult.fromJson(response.data!);
+    } on DioException catch (e) {
+      throw _map(e);
+    } catch (e) {
+      throw AssignmentUnexpected(e.toString());
+    }
+  }
+
   Future<void> delete({
     required String juradoId,
     required String prototipoId,

@@ -10,8 +10,10 @@ import '../../editions/data/edition_models.dart';
 import '../../prototipos/application/admin_prototipos_controller.dart';
 import '../../prototipos/data/prototipo_models.dart';
 import '../application/admin_assignments_controller.dart';
+import '../data/admin_assignments_repository.dart';
 import '../data/assignment_models.dart';
 import 'widgets/assign_jurado_sheet.dart';
+import 'widgets/bulk_assign_sheet.dart';
 
 class AdminAssignmentsPage extends ConsumerWidget {
   const AdminAssignmentsPage({super.key});
@@ -51,7 +53,13 @@ class AdminAssignmentsPage extends ConsumerWidget {
               ),
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(padX, 24, padX, 16),
+                  padding: EdgeInsets.fromLTRB(padX, 20, padX, 0),
+                  child: const _BulkAssignBar(),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(padX, 16, padX, 16),
                   child: const _FilterBar(),
                 ),
               ),
@@ -136,6 +144,82 @@ class _Header extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+//  Bulk assign by categoría (= área)
+// ──────────────────────────────────────────────────────────────────────────
+
+class _BulkAssignBar extends ConsumerStatefulWidget {
+  const _BulkAssignBar();
+  @override
+  ConsumerState<_BulkAssignBar> createState() => _BulkAssignBarState();
+}
+
+class _BulkAssignBarState extends ConsumerState<_BulkAssignBar> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: FilledButton.icon(
+        onPressed: _busy ? null : _open,
+        icon: _busy
+            ? const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 1.6),
+              )
+            : const Icon(Icons.groups_2_outlined, size: 16),
+        label: Text(_busy ? 'Asignando…' : 'Asignar jurados por categoría'),
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.accent.withValues(alpha: 0.20),
+          foregroundColor: AppColors.textPrimary,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          textStyle:
+              const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: AppColors.accent.withValues(alpha: 0.45)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _open() async {
+    final filter = ref.read(prototiposFilterProvider);
+    final sel = await BulkAssignSheet.show(
+      context,
+      initialEditionId: filter.editionId,
+    );
+    if (sel == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final res = await ref.read(adminAssignmentsRepositoryProvider).bulkAssign(
+            juradoIds: sel.juradoIds,
+            categoriaId: sel.categoriaId,
+            templateId: sel.templateId,
+          );
+      // Las cachés por prototipo y el listado quedan obsoletas tras la
+      // asignación masiva: invalidamos para que los conteos se refresquen.
+      ref.invalidate(prototipoAssignmentsControllerProvider);
+      ref.invalidate(adminPrototiposControllerProvider);
+      if (mounted) {
+        final msg = res.prototipos == 0
+            ? 'La categoría no tiene prototipos en esta edición.'
+            : '${res.created} asignaciones creadas'
+                '${res.skipped > 0 ? " · ${res.skipped} ya existían" : ""} '
+                '(${res.jurados} jurados × ${res.prototipos} prototipos).';
+        _toast(context, msg, isError: res.prototipos == 0);
+      }
+    } on AssignmentFailure catch (e) {
+      if (mounted) _toast(context, e.message, isError: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 }
 

@@ -77,6 +77,36 @@ class TemplateOption {
       );
 }
 
+/// Resumen devuelto por POST /admin/assignments/bulk.
+class BulkAssignResult {
+  const BulkAssignResult({
+    required this.created,
+    required this.skipped,
+    required this.prototipos,
+    required this.jurados,
+  });
+
+  /// Asignaciones realmente creadas.
+  final int created;
+
+  /// Combinaciones (jurado × prototipo) que ya existían y se omitieron.
+  final int skipped;
+
+  /// Prototipos de la categoría considerados.
+  final int prototipos;
+
+  /// Jurados aplicados.
+  final int jurados;
+
+  factory BulkAssignResult.fromJson(Map<String, dynamic> json) =>
+      BulkAssignResult(
+        created: (json['created'] as num).toInt(),
+        skipped: (json['skipped'] as num).toInt(),
+        prototipos: (json['prototipos'] as num).toInt(),
+        jurados: (json['jurados'] as num).toInt(),
+      );
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 //  Failures
 // ──────────────────────────────────────────────────────────────────────────
