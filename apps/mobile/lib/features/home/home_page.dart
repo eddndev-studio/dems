@@ -82,6 +82,9 @@ class HomePage extends ConsumerWidget {
                           child: _Hero(
                             fullName: user?.fullName ?? 'jurado',
                             total: async.asData?.value.length,
+                            pending: async.asData?.value
+                                .where((it) => !it.submitted)
+                                .length,
                           ),
                         ),
                       ),
@@ -367,22 +370,26 @@ class _UserChipState extends State<_UserChip> {
 // ──────────────────────────────────────────────────────────────────────────
 
 class _Hero extends StatelessWidget {
-  const _Hero({required this.fullName, required this.total});
+  const _Hero({required this.fullName, required this.total, this.pending});
 
   final String fullName;
   final int? total;
+  final int? pending;
 
   @override
   Widget build(BuildContext context) {
     final first = fullName.split(RegExp(r'\s+')).first;
     final text = Theme.of(context).textTheme;
+    final p = pending;
     final String summary = total == null
         ? 'Cargando asignaciones…'
         : total == 0
         ? 'No tienes asignaciones activas por ahora.'
-        : total == 1
+        : p == 0
+        ? 'Completaste tus $total ${total == 1 ? "evaluación" : "evaluaciones"}.'
+        : p == 1
         ? '1 prototipo pendiente de evaluar.'
-        : '$total prototipos pendientes de evaluar.';
+        : '$p prototipos pendientes de evaluar.';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
