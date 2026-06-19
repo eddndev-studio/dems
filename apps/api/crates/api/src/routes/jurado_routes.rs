@@ -89,16 +89,7 @@ pub async fn list_asignaciones(
     let items: Vec<AsignacionItem> = rows
         .into_iter()
         .map(
-            |(
-                p_id,
-                p_folio,
-                p_nombre,
-                r_id,
-                r_nombre,
-                r_tipo,
-                eval_id,
-                submitted_at,
-            )| {
+            |(p_id, p_folio, p_nombre, r_id, r_nombre, r_tipo, eval_id, submitted_at)| {
                 AsignacionItem {
                     prototipo: PrototipoSummary {
                         id: p_id,

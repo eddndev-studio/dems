@@ -6,7 +6,10 @@ pub const JURADOS: &[(&str, &str)] = &[
     ("adgomezv@ipn.mx", "ADRIANA G�MEZ V�ZQUEZ"),
     ("karina.garciaj@aefcm.gob.mx", "KARINA  GARC�A JU�REZ"),
     ("ejimenezr@ipn.mx", "ERIKA JIM�NEZ  ROJAS"),
-    ("francisca.callejas@aefc.gob.mx", "FRANCISCA SUSANA CALLEJAS �NGELES"),
+    (
+        "francisca.callejas@aefc.gob.mx",
+        "FRANCISCA SUSANA CALLEJAS �NGELES",
+    ),
     ("mavilar@ipn.mx", "MILTON AVILA ROJAS"),
     ("bgutierreza@ipn.mx", "BRENDA GUTI�RREZ ALEM�N"),
     ("amorenoc@ipn.mx", "AXEL ERNESTO MORENO CERVANTES"),

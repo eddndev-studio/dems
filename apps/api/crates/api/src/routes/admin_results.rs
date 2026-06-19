@@ -9,12 +9,12 @@ use axum::http::{header, HeaderMap, HeaderValue};
 use axum::response::IntoResponse;
 use axum::Json;
 use chrono::{DateTime, Utc};
+use rust_xlsxwriter::{Format, FormatAlign, FormatBorder, Workbook};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use utoipa::ToSchema;
 use uuid::Uuid;
-use rust_xlsxwriter::{Workbook, Format, FormatBorder, FormatAlign};
 
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::RequireAdmin;
@@ -228,7 +228,8 @@ pub async fn by_categoria(
 
     // Ranking: promedio desc, los sin evaluaciones al final.
     prototipos.sort_by(|a, b| match (a.promedio, b.promedio) {
-        (Some(ap), Some(bp)) => bp.partial_cmp(&ap)
+        (Some(ap), Some(bp)) => bp
+            .partial_cmp(&ap)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.folio.cmp(&b.folio)),
         (Some(_), None) => std::cmp::Ordering::Less,
@@ -305,7 +306,7 @@ pub async fn export_excel(
             )
             AND c.kind IN ('scale', 'boolean')
         ), 0)
-        "#
+        "#,
     )
     .bind(edition_id)
     .bind(rubric_type)
@@ -371,7 +372,7 @@ pub async fn export_excel(
           )
         GROUP BY cat.nombre, p.folio, p.nombre, u.full_name, ev.submitted_at, cat.orden
         ORDER BY cat.orden, p.folio, u.full_name
-        "#
+        "#,
     )
     .bind(edition_id)
     .bind(rubric_type)
@@ -380,7 +381,7 @@ pub async fn export_excel(
     .map_err(|e| ApiError::Internal(e.into()))?;
 
     let mut workbook = Workbook::new();
-    
+
     let header_format = Format::new()
         .set_bold()
         .set_border(FormatBorder::Thin)
@@ -390,13 +391,22 @@ pub async fn export_excel(
     let cell_format = Format::new().set_border(FormatBorder::Thin);
 
     // Hoja 1: Ranking General
-    let ws1 = workbook.add_worksheet().set_name("Ranking General").map_err(|e| ApiError::Internal(e.into()))?;
-    ws1.write_string_with_format(0, 0, "Categoría", &header_format).unwrap();
-    ws1.write_string_with_format(0, 1, "Folio", &header_format).unwrap();
-    ws1.write_string_with_format(0, 2, "Prototipo", &header_format).unwrap();
-    ws1.write_string_with_format(0, 3, "N° Jurados", &header_format).unwrap();
-    ws1.write_string_with_format(0, 4, "Promedio", &header_format).unwrap();
-    ws1.write_string_with_format(0, 5, "Max Total", &header_format).unwrap();
+    let ws1 = workbook
+        .add_worksheet()
+        .set_name("Ranking General")
+        .map_err(|e| ApiError::Internal(e.into()))?;
+    ws1.write_string_with_format(0, 0, "Categoría", &header_format)
+        .unwrap();
+    ws1.write_string_with_format(0, 1, "Folio", &header_format)
+        .unwrap();
+    ws1.write_string_with_format(0, 2, "Prototipo", &header_format)
+        .unwrap();
+    ws1.write_string_with_format(0, 3, "N° Jurados", &header_format)
+        .unwrap();
+    ws1.write_string_with_format(0, 4, "Promedio", &header_format)
+        .unwrap();
+    ws1.write_string_with_format(0, 5, "Max Total", &header_format)
+        .unwrap();
 
     ws1.set_column_width(0, 20).unwrap();
     ws1.set_column_width(1, 15).unwrap();
@@ -407,26 +417,42 @@ pub async fn export_excel(
 
     for (i, row) in rows.iter().enumerate() {
         let r = (i + 1) as u32;
-        ws1.write_string_with_format(r, 0, &row.1, &cell_format).unwrap();
-        ws1.write_string_with_format(r, 1, &row.2, &cell_format).unwrap();
-        ws1.write_string_with_format(r, 2, &row.3, &cell_format).unwrap();
-        ws1.write_number_with_format(r, 3, row.4 as f64, &cell_format).unwrap();
+        ws1.write_string_with_format(r, 0, &row.1, &cell_format)
+            .unwrap();
+        ws1.write_string_with_format(r, 1, &row.2, &cell_format)
+            .unwrap();
+        ws1.write_string_with_format(r, 2, &row.3, &cell_format)
+            .unwrap();
+        ws1.write_number_with_format(r, 3, row.4 as f64, &cell_format)
+            .unwrap();
         if let Some(promedio) = row.5 {
-            ws1.write_number_with_format(r, 4, promedio, &cell_format).unwrap();
+            ws1.write_number_with_format(r, 4, promedio, &cell_format)
+                .unwrap();
         } else {
-            ws1.write_string_with_format(r, 4, "", &cell_format).unwrap();
+            ws1.write_string_with_format(r, 4, "", &cell_format)
+                .unwrap();
         }
-        ws1.write_number_with_format(r, 5, max_total as f64, &cell_format).unwrap();
+        ws1.write_number_with_format(r, 5, max_total as f64, &cell_format)
+            .unwrap();
     }
 
     // Hoja 2: Desglose por Jurados
-    let ws2 = workbook.add_worksheet().set_name("Desglose por Jurados").map_err(|e| ApiError::Internal(e.into()))?;
-    ws2.write_string_with_format(0, 0, "Categoría", &header_format).unwrap();
-    ws2.write_string_with_format(0, 1, "Folio", &header_format).unwrap();
-    ws2.write_string_with_format(0, 2, "Prototipo", &header_format).unwrap();
-    ws2.write_string_with_format(0, 3, "Jurado", &header_format).unwrap();
-    ws2.write_string_with_format(0, 4, "Total", &header_format).unwrap();
-    ws2.write_string_with_format(0, 5, "Fecha Evaluación", &header_format).unwrap();
+    let ws2 = workbook
+        .add_worksheet()
+        .set_name("Desglose por Jurados")
+        .map_err(|e| ApiError::Internal(e.into()))?;
+    ws2.write_string_with_format(0, 0, "Categoría", &header_format)
+        .unwrap();
+    ws2.write_string_with_format(0, 1, "Folio", &header_format)
+        .unwrap();
+    ws2.write_string_with_format(0, 2, "Prototipo", &header_format)
+        .unwrap();
+    ws2.write_string_with_format(0, 3, "Jurado", &header_format)
+        .unwrap();
+    ws2.write_string_with_format(0, 4, "Total", &header_format)
+        .unwrap();
+    ws2.write_string_with_format(0, 5, "Fecha Evaluación", &header_format)
+        .unwrap();
 
     ws2.set_column_width(0, 20).unwrap();
     ws2.set_column_width(1, 15).unwrap();
@@ -437,20 +463,35 @@ pub async fn export_excel(
 
     for (i, row) in jurados_rows.iter().enumerate() {
         let r = (i + 1) as u32;
-        ws2.write_string_with_format(r, 0, &row.0, &cell_format).unwrap();
-        ws2.write_string_with_format(r, 1, &row.1, &cell_format).unwrap();
-        ws2.write_string_with_format(r, 2, &row.2, &cell_format).unwrap();
-        ws2.write_string_with_format(r, 3, &row.3, &cell_format).unwrap();
-        ws2.write_number_with_format(r, 4, row.4 as f64, &cell_format).unwrap();
-        ws2.write_string_with_format(r, 5, &row.5.format("%Y-%m-%d %H:%M:%S").to_string(), &cell_format).unwrap();
+        ws2.write_string_with_format(r, 0, &row.0, &cell_format)
+            .unwrap();
+        ws2.write_string_with_format(r, 1, &row.1, &cell_format)
+            .unwrap();
+        ws2.write_string_with_format(r, 2, &row.2, &cell_format)
+            .unwrap();
+        ws2.write_string_with_format(r, 3, &row.3, &cell_format)
+            .unwrap();
+        ws2.write_number_with_format(r, 4, row.4 as f64, &cell_format)
+            .unwrap();
+        ws2.write_string_with_format(
+            r,
+            5,
+            &row.5.format("%Y-%m-%d %H:%M:%S").to_string(),
+            &cell_format,
+        )
+        .unwrap();
     }
 
-    let buf = workbook.save_to_buffer().map_err(|e| ApiError::Internal(e.into()))?;
+    let buf = workbook
+        .save_to_buffer()
+        .map_err(|e| ApiError::Internal(e.into()))?;
 
     let mut headers = HeaderMap::new();
     headers.insert(
         header::CONTENT_TYPE,
-        HeaderValue::from_static("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        HeaderValue::from_static(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
     );
     let filename = format!("resultados-edicion-{year}-{rubric_type}.xlsx");
     headers.insert(
@@ -678,4 +719,3 @@ pub async fn final_ranking(
         prototipos,
     }))
 }
-
