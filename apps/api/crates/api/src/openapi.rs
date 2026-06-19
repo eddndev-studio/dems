@@ -72,6 +72,7 @@ impl Modify for SecurityAddon {
         // --- Admin: assignments ---
         admin_assignments::list_for_prototipo,
         admin_assignments::create,
+        admin_assignments::bulk,
         admin_assignments::delete,
         // --- Admin: rubric templates ---
         admin_rubrics::list,
