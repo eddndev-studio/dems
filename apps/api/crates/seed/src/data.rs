@@ -1,25 +1,32 @@
-// Auto-generated from xlsx and csv
-pub const JURADOS: &[(&str, &str)] = &[
-    ("alluna@ipn.mx", "ANA LILIA LUNA GARCIA"),
-    ("gchavezr@ipn.mx", "GIACOMO  CHAVEZ  ROMARO"),
-    ("vagustin@ipn.mx", "VER�NICA  AGUST�N DOM�NGUEZ"),
-    ("adgomezv@ipn.mx", "ADRIANA G�MEZ V�ZQUEZ"),
-    ("karina.garciaj@aefcm.gob.mx", "KARINA  GARC�A JU�REZ"),
-    ("ejimenezr@ipn.mx", "ERIKA JIM�NEZ  ROJAS"),
-    (
-        "francisca.callejas@aefc.gob.mx",
-        "FRANCISCA SUSANA CALLEJAS �NGELES",
-    ),
-    ("mavilar@ipn.mx", "MILTON AVILA ROJAS"),
-    ("bgutierreza@ipn.mx", "BRENDA GUTI�RREZ ALEM�N"),
-    ("amorenoc@ipn.mx", "AXEL ERNESTO MORENO CERVANTES"),
-    ("aiperezg@ipn.mx", "ARCELIA ILEANA  P�REZ GARC�A"),
-    ("lsanchezne@ipn.mx", "LIZETH  S�NCHEZ NERIA"),
-    ("cparedesm@ipn.mx", "CARMEN PATRICIA PAREDES MARROQUIN"),
-    ("falvaa@ipn.mx", "FELIPE ANTONIO DE JES�S ALVA ALCALDE"),
-    ("jlopezi@ipn.mx", "JOS� ALBERTO  L�PEZ  ISLAS"),
+// Auto-generado desde los Excel oficiales 2026 (jurados Hoja1 + prototipos EtapaFinal).
+// NO se incluye la columna Unidad Académica. Regenerar con scripts/gen_seed_data.py.
+
+/// (email, nombre completo, slug de categoría). Password del jurado = su email.
+pub const JURADOS: &[(&str, &str, &str)] = &[
+    ("alluna@ipn.mx", "ANA LILIA LUNA GARCIA", "aplicacion-empresa"),
+    ("gchavezr@ipn.mx", "GIACOMO CHAVEZ ROMARO", "aplicacion-empresa"),
+    ("lusalazar@ipn.mx", "LUCIO SALAZAR POOT", "aplicacion-empresa"),
+    ("ieperez@ipn.mx", "IRVING ELEAZAR PÉREZ MONTES", "maquinaria-equipo"),
+    ("jlopezi@ipn.mx", "JOSÉ ALBERTO LÓPEZ ISLAS", "maquinaria-equipo"),
+    ("vagustin@ipn.mx", "VERÓNICA AGUSTÍN DOMÍNGUEZ", "maquinaria-equipo"),
+    ("adgomezv@ipn.mx", "ADRIANA GÓMEZ VÁZQUEZ", "procesos-quimicos-biologicos"),
+    ("cvillicana@ipn.mx", "CARLOS VILLICAÑA ZÚÑIGA", "procesos-quimicos-biologicos"),
+    ("hnecoecheam@ipn.mx", "HUGO NECOECHEA MONDRAGON", "procesos-quimicos-biologicos"),
+    ("ejimenezr@ipn.mx", "ERIKA JIMÉNEZ ROJAS", "productos-ensenanza"),
+    ("francisca.callejas@aefc.gob.mx", "FRANCISCA SUSANA CALLEJAS ÁNGELES", "productos-ensenanza"),
+    ("karina.garciaj@aefcm.gob.mx", "KARINA GARCÍA JUÁREZ", "productos-ensenanza"),
+    ("bgutierreza@ipn.mx", "BRENDA GUTIÉRREZ ALEMÁN", "productos-salud"),
+    ("egonzaleze@ipn.mx", "EDUARDO GONZÁLEZ ESCORZA", "productos-salud"),
+    ("mavilar@ipn.mx", "MILTON AVILA ROJAS", "productos-salud"),
+    ("aiperezg@ipn.mx", "ARCELIA ILEANA PÉREZ GARCÍA", "desarrollo-software"),
+    ("amorenoc@ipn.mx", "AXEL ERNESTO MORENO CERVANTES", "desarrollo-software"),
+    ("svegag@ipn.mx", "SAMUEL VEGA GONZÁLEZ", "desarrollo-software"),
+    ("cparedesm@ipn.mx", "CARMEN PATRICIA PAREDES MARROQUIN", "soluciones-domesticas"),
+    ("falvaa@ipn.mx", "FELIPE ANTONIO DE JESÚS ALVA ALCALDE", "soluciones-domesticas"),
+    ("lsanchezne@ipn.mx", "LIZETH SÁNCHEZ NERIA", "soluciones-domesticas"),
 ];
 
+/// (folio, nombre, slug de categoría).
 pub const PROTOTIPOS: &[(&str, &str, &str)] = &[
     ("DES015", "Objetos perdidos", "desarrollo-software"),
     ("DES021", "Sicsa", "desarrollo-software"),
