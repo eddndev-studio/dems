@@ -347,8 +347,7 @@ class _TopBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final String title = asignacion?.prototipo.nombre ?? 'Evaluación';
-    final String subtitle = asignacion?.prototipo.plantel ??
-        (asignacion?.rubric.nombre ?? state.rubric.nombre);
+    final String subtitle = "Folio: ${asignacion?.prototipo.folio ?? ''}";
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,

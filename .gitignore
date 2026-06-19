@@ -50,3 +50,5 @@ logs/
 
 # Reference docs (rúbricas locales — no se versionan)
 docs/
+
+.venv/

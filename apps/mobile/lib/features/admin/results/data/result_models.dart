@@ -115,9 +115,9 @@ class EvaluacionResult {
 //  CSV export
 // ──────────────────────────────────────────────────────────────────────────
 
-class CsvExport {
-  const CsvExport({required this.body, required this.filename});
-  final String body;
+class ExcelExport {
+  const ExcelExport({required this.body, required this.filename});
+  final List<int> body;
   final String filename;
 }
 

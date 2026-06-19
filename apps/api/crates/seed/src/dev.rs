@@ -49,35 +49,31 @@ pub async fn run(pool: &PgPool) -> anyhow::Result<()> {
     let jurado_id = upsert_jurado(pool).await?;
     tracing::info!(jurado_id = %jurado_id, "jurado listo");
 
-    let prototipos: &[(&str, &str, &str, Uuid)] = &[
+    let prototipos: &[(&str, &str, Uuid)] = &[
         (
             "PR-2024-0101",
             "AulaSync — gestor de asistencia por QR",
-            "CECyT 9 · Juan de Dios Bátiz",
             cat_software,
         ),
         (
             "PR-2024-0102",
             "NeuroLens — diagnóstico oftálmico asistido por IA",
-            "CECyT 7 · Cuauhtémoc",
             cat_software,
         ),
         (
             "PR-2024-0201",
             "OxiBoost — concentrador de oxígeno portátil de bajo costo",
-            "CECyT 6 · Miguel Othón de Mendizábal",
             cat_salud,
         ),
         (
             "PR-2024-0202",
             "DermaPatch — parche con biosensores para heridas crónicas",
-            "CECyT 11 · Wilfrido Massieu",
             cat_salud,
         ),
     ];
 
-    for (folio, nombre, plantel, categoria_id) in prototipos {
-        let prot_id = upsert_prototipo(pool, edition_id, folio, nombre, plantel).await?;
+    for (folio, nombre, categoria_id) in prototipos {
+        let prot_id = upsert_prototipo(pool, edition_id, folio, nombre).await?;
         link_categoria(pool, prot_id, *categoria_id).await?;
         upsert_assignment(pool, jurado_id, prot_id, tpl_exhib).await?;
     }
@@ -129,20 +125,18 @@ async fn upsert_prototipo(
     edition_id: Uuid,
     folio: &str,
     nombre: &str,
-    plantel: &str,
 ) -> anyhow::Result<Uuid> {
     let id: Uuid = sqlx::query_scalar(
-        r#"INSERT INTO prototipos (id, edition_id, folio, nombre, plantel)
-           VALUES ($1, $2, $3, $4, $5)
+        r#"INSERT INTO prototipos (id, edition_id, folio, nombre)
+           VALUES ($1, $2, $3, $4)
            ON CONFLICT (edition_id, folio)
-           DO UPDATE SET nombre = EXCLUDED.nombre, plantel = EXCLUDED.plantel
+           DO UPDATE SET nombre = EXCLUDED.nombre
            RETURNING id"#,
     )
     .bind(Uuid::new_v4())
     .bind(edition_id)
     .bind(folio)
     .bind(nombre)
-    .bind(plantel)
     .fetch_one(pool)
     .await
     .context("upsert prototipo")?;

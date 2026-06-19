@@ -41,6 +41,7 @@ dependencies:
   connectivity_plus: ^6.1.0
 
   # Utilities
+  share_plus: ^10.1.0
   freezed_annotation: ^3.1.0
   json_annotation: ^4.9.0
   uuid: ^4.5.1
@@ -62,8 +63,20 @@ dev_dependencies:
   json_serializable: ^6.11.2
   riverpod_generator: ^3.0.2
   drift_dev: ^2.28.4
-  custom_lint: ^0.8.1
-  riverpod_lint: ^3.0.2
+  flutter_launcher_icons: ^0.14.2
+  flutter_native_splash: ^2.4.3
 
 flutter:
   uses-material-design: true
+
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "../../dems_icon.png"
+  min_sdk_android: 21
+
+flutter_native_splash:
+  color: "#FFFFFF"
+  image: "../../dems_icon.png"
+  android: true
+  ios: true

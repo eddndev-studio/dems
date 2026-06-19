@@ -33,7 +33,6 @@ class PrototipoSummary {
     required this.editionId,
     required this.folio,
     required this.nombre,
-    required this.plantel,
     required this.ejeTransversal,
     required this.createdAt,
   });
@@ -42,7 +41,6 @@ class PrototipoSummary {
   final String editionId;
   final String folio;
   final String nombre;
-  final String? plantel;
   final bool ejeTransversal;
   final DateTime createdAt;
 
@@ -52,14 +50,12 @@ class PrototipoSummary {
         editionId: json['edition_id'] as String,
         folio: json['folio'] as String,
         nombre: json['nombre'] as String,
-        plantel: json['plantel'] as String?,
         ejeTransversal: json['eje_transversal'] as bool,
         createdAt: DateTime.parse(json['created_at'] as String),
       );
 
   PrototipoSummary copyWith({
     String? nombre,
-    String? plantel,
     bool? ejeTransversal,
   }) =>
       PrototipoSummary(
@@ -67,7 +63,6 @@ class PrototipoSummary {
         editionId: editionId,
         folio: folio,
         nombre: nombre ?? this.nombre,
-        plantel: plantel ?? this.plantel,
         ejeTransversal: ejeTransversal ?? this.ejeTransversal,
         createdAt: createdAt,
       );
@@ -103,7 +98,6 @@ class PrototipoDetail {
     required this.editionId,
     required this.folio,
     required this.nombre,
-    required this.plantel,
     required this.ejeTransversal,
     required this.descripcion,
     required this.categorias,
@@ -115,7 +109,6 @@ class PrototipoDetail {
   final String editionId;
   final String folio;
   final String nombre;
-  final String? plantel;
   final bool ejeTransversal;
   final String? descripcion;
   final List<String> categorias;
@@ -128,7 +121,6 @@ class PrototipoDetail {
         editionId: json['edition_id'] as String,
         folio: json['folio'] as String,
         nombre: json['nombre'] as String,
-        plantel: json['plantel'] as String?,
         ejeTransversal: json['eje_transversal'] as bool,
         descripcion: json['descripcion'] as String?,
         categorias: (json['categorias'] as List<dynamic>).cast<String>(),
@@ -144,7 +136,6 @@ class PrototipoDetail {
         editionId: editionId,
         folio: folio,
         nombre: nombre,
-        plantel: plantel,
         ejeTransversal: ejeTransversal,
         createdAt: createdAt,
       );

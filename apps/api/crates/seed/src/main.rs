@@ -2,7 +2,7 @@
 //! 2024 Exhibición + 2021 Memoria Técnica rubric templates.
 
 use anyhow::Context;
-use dems_seed::rubrics;
+use dems_seed::{rubrics, loader};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -15,7 +15,8 @@ async fn main() -> anyhow::Result<()> {
         .connect(&database_url)
         .await?;
 
-    rubrics::seed(&pool).await?;
+    let edition_id = rubrics::seed(&pool).await?;
+    loader::load_data(&pool, edition_id).await?;
     tracing::info!("seed completed");
     Ok(())
 }

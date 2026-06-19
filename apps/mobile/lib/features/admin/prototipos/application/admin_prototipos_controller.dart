@@ -52,7 +52,6 @@ class AdminPrototiposController extends AsyncNotifier<List<PrototipoSummary>> {
     required String editionId,
     required String folio,
     required String nombre,
-    String? plantel,
     bool ejeTransversal = false,
     String? descripcion,
     List<String> categorias = const [],
@@ -62,7 +61,6 @@ class AdminPrototiposController extends AsyncNotifier<List<PrototipoSummary>> {
           editionId: editionId,
           folio: folio,
           nombre: nombre,
-          plantel: plantel,
           ejeTransversal: ejeTransversal,
           descripcion: descripcion,
           categorias: categorias,
@@ -78,14 +76,12 @@ class AdminPrototiposController extends AsyncNotifier<List<PrototipoSummary>> {
   Future<PrototipoDetail> patch(
     String id, {
     String? nombre,
-    String? plantel,
     bool? ejeTransversal,
     String? descripcion,
   }) async {
     final detail = await ref.read(adminPrototiposRepositoryProvider).patch(
           id,
           nombre: nombre,
-          plantel: plantel,
           ejeTransversal: ejeTransversal,
           descripcion: descripcion,
         );

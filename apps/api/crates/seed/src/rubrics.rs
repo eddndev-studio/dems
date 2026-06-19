@@ -9,28 +9,35 @@ use argon2::{Argon2, PasswordHasher};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-pub async fn seed(pool: &PgPool) -> anyhow::Result<()> {
+pub async fn seed(pool: &PgPool) -> anyhow::Result<Uuid> {
     let mut tx = pool.begin().await?;
 
-    // --- Admin user (idempotente) ---
-    let admin_email = "admin@dems.local";
-    let admin_pw = "admin1234"; // cambiar tras primer login
-    let salt = SaltString::generate(&mut OsRng);
-    let hash = Argon2::default()
-        .hash_password(admin_pw.as_bytes(), &salt)
-        .map_err(|e| anyhow::anyhow!(e))?
-        .to_string();
+    // --- Admin users (idempotente) ---
+    let admins = vec![
+        ("admin1@dems.local", "admin1234", "Administrador 1"),
+        ("admin2@dems.local", "admin1234", "Administrador 2"),
+        ("admin3@dems.local", "admin1234", "Administrador 3"),
+    ];
 
-    sqlx::query(
-        r#"INSERT INTO users (id, email, full_name, role, password_hash, is_active)
-           VALUES ($1, $2, 'Administrador', 'admin', $3, true)
-           ON CONFLICT (email) DO NOTHING"#,
-    )
-    .bind(Uuid::new_v4())
-    .bind(admin_email)
-    .bind(&hash)
-    .execute(&mut *tx)
-    .await?;
+    for (email, pw, name) in admins {
+        let salt = SaltString::generate(&mut OsRng);
+        let hash = Argon2::default()
+            .hash_password(pw.as_bytes(), &salt)
+            .map_err(|e| anyhow::anyhow!(e))?
+            .to_string();
+
+        sqlx::query(
+            r#"INSERT INTO users (id, email, full_name, role, password_hash, is_active)
+               VALUES ($1, $2, $3, 'admin', $4, true)
+               ON CONFLICT (email) DO NOTHING"#,
+        )
+        .bind(Uuid::new_v4())
+        .bind(email)
+        .bind(name)
+        .bind(&hash)
+        .execute(&mut *tx)
+        .await?;
+    }
 
     // --- Categorías (7 oficiales) ---
     let categorias: &[(&str, &str, i32)] = &[
@@ -75,7 +82,7 @@ pub async fn seed(pool: &PgPool) -> anyhow::Result<()> {
     seed_memoria_2021(&mut tx, edition_id).await?;
 
     tx.commit().await?;
-    Ok(())
+    Ok(edition_id)
 }
 
 async fn seed_exhibicion_2024(
@@ -96,9 +103,9 @@ async fn seed_exhibicion_2024(
         ("Aplicabilidad", 1, &[
             ("El prototipo funciona correctamente sin presentar fallas durante la demostración.", 1, "scale"),
             ("Se identifica en el prototipo la aplicación del conocimiento adquirido por el alumno de acuerdo con la carrera o unidades de aprendizaje.", 2, "scale"),
-            ("Los procesos o métodos de construcción utilizados para el desarrollo del prototipo fueron adecuadamente aplicados.", 3, "scale"),
+            ("Los procesos o métodos de construcción utilizados para el desarrollo del prototipo fueron adecuadamente aplicados. (Conocimiento adquirido) (En el caso de software codificación y diseño)", 3, "scale"),
             ("Es aplicable para la población a la cual fue diseñado (cliente, mercado, o servicio).", 4, "scale"),
-            ("El prototipo se sometió a pruebas.", 5, "scale"),
+            ("El prototipo se sometió a pruebas. (En caso de software incluye implementación, vigencia de plataforma, esquema de distribución)", 5, "scale"),
             ("La solución es aplicable al problema, necesidad o demanda real presentada.", 6, "scale"),
             ("El prototipo satisface una necesidad acorde a la categoría.", 7, "scale"),
         ]),
@@ -107,17 +114,17 @@ async fn seed_exhibicion_2024(
             ("Introduce un nuevo mercado o servicio.", 2, "scale"),
             ("La solución al problema planteado es resuelta por el prototipo.", 3, "scale"),
             ("Explica claramente el proceso de innovación en el prototipo.", 4, "scale"),
-            ("El prototipo desarrollado tiene potencial en el mercado.", 5, "scale"),
-            ("Consideras que tu prototipo muestra elementos de creatividad.", 6, "scale"),
+            ("El prototipo desarrollado tiene potencial en el mercado", 5, "scale"),
+            ("Consideras que tu prototipo muestra elementos de creatividad (En el caso de software genera interfaces del usuario creativas y de fácil manejo)", 6, "scale"),
         ]),
         ("Factibilidad", 3, &[
             ("Propone una alternativa tecnológica o administrativa viable.", 1, "scale"),
             ("Argumenta el tipo de materiales que consideró para la construcción del prototipo.", 2, "scale"),
-            ("Explica cómo consideró el costo unitario del prototipo.", 3, "scale"),
+            ("Explica como considero el costo unitario del prototipo.", 3, "scale"),
             ("Considera para su producción las necesidades del mercado.", 4, "scale"),
             ("Explica las ventajas desde el punto de vista financiero, económico, social, ambiental en la producción del prototipo, bien o servicio.", 5, "scale"),
             ("¿Existe un potencial en el mercado internacional?", 6, "scale"),
-            ("¿Conoce los procesos o métodos de manufactura para llevar a cabo la producción?", 7, "scale"),
+            ("¿Conoce los procesos o métodos de manufactura para llevar a cabo la producción? De la respuesta colocar palabras clave", 7, "scale"),
         ]),
         ("Exposición Oral", 4, &[
             ("Expone de manera clara y congruente.", 1, "scale"),
@@ -127,8 +134,8 @@ async fn seed_exhibicion_2024(
             ("Al ser cuestionados las respuestas son precisas.", 5, "scale"),
         ]),
         ("Construcción del Prototipo", 5, &[
-            ("Utilizó materiales reciclados o pensados en la sustentabilidad.", 1, "scale"),
-            ("Calidad del trabajo realizado (prototipo o programa).", 2, "scale"),
+            ("Utilizó materiales reciclados o pensados en la sustentabilidad", 1, "scale"),
+            ("Calidad del trabajo realizado (prototipo o programa) Calidad: caracterisaticas visuales de construcción, rasgos físicos, aspectos optimo, proceso favorable. De la respuesta colocar palabras clave", 2, "scale"),
         ]),
     ];
 
@@ -143,13 +150,13 @@ async fn seed_exhibicion_2024(
     insert_criterion(
         tx,
         cartel_sec,
-        "El cartel es creativo, innovador, presenta cuadro de datos, imágenes, esquemas y apoyos a la exposición.",
+        "El cartel es creativo, innovador, presenta cuadro de datos, imágenes, esquemas y todo aquello que sirva de apoyo a la exposición del tema.",
         1, 1, "scale",
     ).await?;
     insert_criterion(
         tx,
         cartel_sec,
-        "¿Cómo evaluarías el diseño del stand?",
+        "¿Cómo evaluarias el diseño del stand?",
         2,
         3,
         "scale",
@@ -165,8 +172,8 @@ async fn seed_exhibicion_2024(
     )
     .await?;
     for (i, q) in [
-        "¿En dónde surgió la idea del prototipo?",
-        "Según el lema del Politécnico \"La técnica al servicio de la patria\", ¿cuál sería tu mejor contribución?",
+        "¿En dónde surgió la idea del prototipo? (De la respuesta colocar palabra clave)",
+        "Según el lema del Politécnico \"La técnica al servicio de la patria\", ¿Cuál sería tu mejor contribución?",
         "¿Qué hace sustentable tu prototipo?",
     ]
     .iter()

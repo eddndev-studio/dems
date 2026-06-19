@@ -20,7 +20,6 @@ pub struct PrototipoView {
     pub edition_id: Uuid,
     pub folio: String,
     pub nombre: String,
-    pub plantel: Option<String>,
     pub eje_transversal: bool,
     pub descripcion: Option<String>,
     pub categorias: Vec<Uuid>,
@@ -42,8 +41,6 @@ pub struct CreatePrototipoRequest {
     pub folio: String,
     #[validate(length(min = 1, max = 200))]
     pub nombre: String,
-    #[serde(default)]
-    pub plantel: Option<String>,
     #[serde(default)]
     pub eje_transversal: bool,
     #[serde(default)]
@@ -67,8 +64,6 @@ pub struct PatchPrototipoRequest {
     #[serde(default)]
     #[validate(length(min = 1, max = 200))]
     pub nombre: Option<String>,
-    #[serde(default)]
-    pub plantel: Option<String>,
     #[serde(default)]
     pub eje_transversal: Option<bool>,
     #[serde(default)]
@@ -117,15 +112,14 @@ pub async fn create(
     let id = Uuid::new_v4();
     let created_at: DateTime<Utc> = sqlx::query_scalar(
         r#"INSERT INTO prototipos
-               (id, edition_id, folio, nombre, plantel, eje_transversal, descripcion)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+               (id, edition_id, folio, nombre, eje_transversal, descripcion)
+           VALUES ($1, $2, $3, $4, $5, $6)
            RETURNING created_at"#,
     )
     .bind(id)
     .bind(req.edition_id)
     .bind(&req.folio)
     .bind(&req.nombre)
-    .bind(&req.plantel)
     .bind(req.eje_transversal)
     .bind(&req.descripcion)
     .fetch_one(&mut *tx)
@@ -189,7 +183,6 @@ pub async fn create(
             edition_id: req.edition_id,
             folio: req.folio,
             nombre: req.nombre,
-            plantel: req.plantel,
             eje_transversal: req.eje_transversal,
             descripcion: req.descripcion,
             categorias: req.categorias,
@@ -209,7 +202,6 @@ pub struct PrototipoSummary {
     pub edition_id: Uuid,
     pub folio: String,
     pub nombre: String,
-    pub plantel: Option<String>,
     pub eje_transversal: bool,
     pub created_at: DateTime<Utc>,
 }
@@ -228,7 +220,7 @@ pub async fn list(
     Query(params): Query<ListParams>,
 ) -> ApiResult<Json<Vec<PrototipoSummary>>> {
     let rows = sqlx::query_as::<_, PrototipoSummary>(
-        r#"SELECT id, edition_id, folio, nombre, plantel, eje_transversal, created_at
+        r#"SELECT id, edition_id, folio, nombre, eje_transversal, created_at
            FROM prototipos
            WHERE ($1::uuid IS NULL OR edition_id = $1)
            ORDER BY folio"#,
@@ -271,13 +263,12 @@ async fn load_prototipo(state: &AppState, id: Uuid) -> ApiResult<PrototipoView> 
             Uuid,
             String,
             String,
-            Option<String>,
             bool,
             Option<String>,
             DateTime<Utc>,
         ),
     >(
-        r#"SELECT id, edition_id, folio, nombre, plantel, eje_transversal,
+        r#"SELECT id, edition_id, folio, nombre, eje_transversal,
                   descripcion, created_at
            FROM prototipos WHERE id = $1"#,
     )
@@ -313,10 +304,9 @@ async fn load_prototipo(state: &AppState, id: Uuid) -> ApiResult<PrototipoView> 
         edition_id: main.1,
         folio: main.2,
         nombre: main.3,
-        plantel: main.4,
-        eje_transversal: main.5,
-        descripcion: main.6,
-        created_at: main.7,
+        eje_transversal: main.4,
+        descripcion: main.5,
+        created_at: main.6,
         categorias,
         integrantes,
     })
@@ -350,14 +340,12 @@ pub async fn patch(
     let affected = sqlx::query(
         r#"UPDATE prototipos
            SET nombre = COALESCE($2, nombre),
-               plantel = COALESCE($3, plantel),
-               eje_transversal = COALESCE($4, eje_transversal),
-               descripcion = COALESCE($5, descripcion)
+               eje_transversal = COALESCE($3, eje_transversal),
+               descripcion = COALESCE($4, descripcion)
            WHERE id = $1"#,
     )
     .bind(id)
     .bind(&req.nombre)
-    .bind(&req.plantel)
     .bind(req.eje_transversal)
     .bind(&req.descripcion)
     .execute(&state.pool)

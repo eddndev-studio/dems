@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart' as share_plus;
 
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_motion.dart';
@@ -357,7 +358,7 @@ class _ExportCsvButtonState extends ConsumerState<_ExportCsvButton> {
               ),
             )
           : const Icon(Icons.download_rounded, size: 16),
-      label: Text(_busy ? 'Exportando…' : 'Exportar CSV'),
+      label: Text(_busy ? 'Exportando…' : 'Exportar Excel'),
       style: FilledButton.styleFrom(
         backgroundColor: AppColors.accent.withValues(alpha: 0.20),
         foregroundColor: AppColors.textPrimary,
@@ -374,14 +375,19 @@ class _ExportCsvButtonState extends ConsumerState<_ExportCsvButton> {
     setState(() => _busy = true);
     try {
       final repo = ref.read(adminResultsRepositoryProvider);
-      final exp = await repo.exportCsv(
+      final exp = await repo.exportExcel(
         editionId: widget.editionId,
         rubricType: widget.rubricType,
       );
-      final path = await repo.saveCsvToDisk(exp);
-      if (mounted) _toast(context, 'CSV guardado en $path');
+      final path = await repo.saveExcelToDisk(exp);
+      if (mounted) {
+        _toast(context, 'Excel generado. Abriendo opciones de compartir...');
+        await share_plus.Share.shareXFiles([share_plus.XFile(path)], subject: exp.filename);
+      }
     } on ResultsFailure catch (e) {
       if (mounted) _toast(context, e.message, isError: true);
+    } catch (e) {
+      if (mounted) _toast(context, 'Error al exportar: $e', isError: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

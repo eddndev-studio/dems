@@ -19,20 +19,18 @@ class PrototipoSummary {
     required this.id,
     required this.folio,
     required this.nombre,
-    this.plantel,
   });
 
   final String id;
   final String folio;
   final String nombre;
-  final String? plantel;
+  // No plantel
 
   factory PrototipoSummary.fromJson(Map<String, dynamic> json) =>
       PrototipoSummary(
         id: json['id'] as String,
         folio: json['folio'] as String,
         nombre: json['nombre'] as String,
-        plantel: json['plantel'] as String?,
       );
 }
 
