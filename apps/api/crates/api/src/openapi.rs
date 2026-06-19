@@ -82,7 +82,7 @@ impl Modify for SecurityAddon {
         admin_rubrics::delete_rubric,
         // --- Admin: results & ops ---
         admin_results::by_categoria,
-        admin_results::export_csv,
+        admin_results::export_excel,
         admin_results::final_ranking,
         evaluacion_routes::reopen,
     ),

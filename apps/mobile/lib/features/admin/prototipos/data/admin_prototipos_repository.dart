@@ -43,7 +43,6 @@ class AdminPrototiposRepository {
     required String editionId,
     required String folio,
     required String nombre,
-    String? plantel,
     bool ejeTransversal = false,
     String? descripcion,
     List<String> categorias = const [],
@@ -56,7 +55,6 @@ class AdminPrototiposRepository {
           'edition_id': editionId,
           'folio': folio,
           'nombre': nombre,
-          if (plantel != null && plantel.isNotEmpty) 'plantel': plantel,
           'eje_transversal': ejeTransversal,
           if (descripcion != null && descripcion.isNotEmpty)
             'descripcion': descripcion,
@@ -75,14 +73,12 @@ class AdminPrototiposRepository {
   Future<PrototipoDetail> patch(
     String id, {
     String? nombre,
-    String? plantel,
     bool? ejeTransversal,
     String? descripcion,
   }) async {
     try {
       final body = <String, dynamic>{};
       if (nombre != null) body['nombre'] = nombre;
-      if (plantel != null) body['plantel'] = plantel;
       if (ejeTransversal != null) body['eje_transversal'] = ejeTransversal;
       if (descripcion != null) body['descripcion'] = descripcion;
       final response = await _dio.patch<Map<String, dynamic>>(

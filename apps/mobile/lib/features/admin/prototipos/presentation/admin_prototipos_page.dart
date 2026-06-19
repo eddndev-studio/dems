@@ -384,8 +384,7 @@ class _TableHeader extends StatelessWidget {
         children: [
           Expanded(flex: 16, child: Text('FOLIO', style: style)),
           Expanded(flex: 36, child: Text('NOMBRE', style: style)),
-          Expanded(flex: 22, child: Text('PLANTEL', style: style)),
-          Expanded(flex: 16, child: Text('EDICIÓN', style: style)),
+          Expanded(flex: 30, child: Text('EJE TRANSVERSAL', style: style)),
           SizedBox(
             width: 120,
             child: Text('ACCIONES', style: style, textAlign: TextAlign.right),
@@ -460,28 +459,13 @@ class _PrototipoRowState extends ConsumerState<_PrototipoRow> {
                       ),
                     ),
                   ),
-                  if (p.ejeTransversal) ...[
-                    const SizedBox(width: 8),
-                    const _EjeBadge(),
-                  ],
                 ],
               ),
             ),
             Expanded(
-              flex: 22,
+              flex: 30,
               child: Text(
-                p.plantel ?? '—',
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ),
-            Expanded(
-              flex: 16,
-              child: Text(
-                widget.edition?.year.toString() ?? '—',
+                p.ejeTransversal ? 'Sí' : 'No',
                 style: TextStyle(
                   fontSize: 12.5,
                   color: AppColors.textSecondary,
@@ -637,7 +621,7 @@ class _PrototipoCard extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${prototipo.plantel ?? "Sin plantel"}'
+                'Folio ${prototipo.folio}'
                 '${edition != null ? "  ·  ${edition!.year}" : ""}',
                 style: TextStyle(
                   fontSize: 12,

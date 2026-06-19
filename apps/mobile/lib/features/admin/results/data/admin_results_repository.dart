@@ -34,19 +34,19 @@ class AdminResultsRepository {
     }
   }
 
-  /// Descarga el CSV completo de la edición. Devuelve el cuerpo + el filename
+  /// Descarga el Excel completo de la edición. Devuelve el cuerpo + el filename
   /// sugerido por el header `Content-Disposition`.
-  Future<CsvExport> exportCsv({
+  Future<ExcelExport> exportExcel({
     required String editionId,
     required RubricType rubricType,
   }) async {
     try {
-      final response = await _dio.get<String>(
-        '/admin/results/edition/$editionId/export.csv',
+      final response = await _dio.get<List<int>>(
+        '/admin/results/edition/$editionId/export.xlsx',
         queryParameters: {'rubric_type': rubricType.apiValue},
         options: Options(
-          responseType: ResponseType.plain,
-          headers: {'Accept': 'text/csv'},
+          responseType: ResponseType.bytes,
+          headers: {'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},
         ),
       );
       final disposition =
@@ -54,8 +54,8 @@ class AdminResultsRepository {
       final match =
           RegExp(r'filename="?([^"]+)"?').firstMatch(disposition);
       final filename = match?.group(1) ??
-          'resultados-${rubricType.apiValue}.csv';
-      return CsvExport(body: response.data ?? '', filename: filename);
+          'resultados-${rubricType.apiValue}.xlsx';
+      return ExcelExport(body: response.data ?? [], filename: filename);
     } on DioException catch (e) {
       throw _map(e);
     } catch (e) {
@@ -63,9 +63,9 @@ class AdminResultsRepository {
     }
   }
 
-  /// Persiste el CSV en disco y devuelve la ruta absoluta. En desktop intenta
+  /// Persiste el Excel en disco y devuelve la ruta absoluta. En desktop intenta
   /// `~/Downloads`; en móvil cae a `ApplicationDocumentsDirectory`.
-  Future<String> saveCsvToDisk(CsvExport export) async {
+  Future<String> saveExcelToDisk(ExcelExport export) async {
     try {
       Directory dir;
       if (Platform.isAndroid || Platform.isLinux || Platform.isMacOS ||
@@ -77,7 +77,7 @@ class AdminResultsRepository {
       }
       final path = p.join(dir.path, export.filename);
       final file = File(path);
-      await file.writeAsString(export.body, flush: true);
+      await file.writeAsBytes(export.body, flush: true);
       return path;
     } catch (e) {
       throw ResultsUnexpected('No se pudo guardar el archivo: $e');

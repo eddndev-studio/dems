@@ -358,7 +358,7 @@ class _ExportCsvButtonState extends ConsumerState<_ExportCsvButton> {
               ),
             )
           : const Icon(Icons.download_rounded, size: 16),
-      label: Text(_busy ? 'Exportando…' : 'Exportar CSV'),
+      label: Text(_busy ? 'Exportando…' : 'Exportar Excel'),
       style: FilledButton.styleFrom(
         backgroundColor: AppColors.accent.withValues(alpha: 0.20),
         foregroundColor: AppColors.textPrimary,
@@ -375,13 +375,13 @@ class _ExportCsvButtonState extends ConsumerState<_ExportCsvButton> {
     setState(() => _busy = true);
     try {
       final repo = ref.read(adminResultsRepositoryProvider);
-      final exp = await repo.exportCsv(
+      final exp = await repo.exportExcel(
         editionId: widget.editionId,
         rubricType: widget.rubricType,
       );
-      final path = await repo.saveCsvToDisk(exp);
+      final path = await repo.saveExcelToDisk(exp);
       if (mounted) {
-        _toast(context, 'CSV generado. Abriendo opciones de compartir...');
+        _toast(context, 'Excel generado. Abriendo opciones de compartir...');
         await share_plus.Share.shareXFiles([share_plus.XFile(path)], subject: exp.filename);
       }
     } on ResultsFailure catch (e) {

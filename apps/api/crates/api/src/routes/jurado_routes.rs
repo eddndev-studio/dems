@@ -27,7 +27,6 @@ pub struct PrototipoSummary {
     pub id: Uuid,
     pub folio: String,
     pub nombre: String,
-    pub plantel: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -58,8 +57,7 @@ pub async fn list_asignaciones(
         (
             Uuid,
             String,
-            String,
-            Option<String>, // prototipo
+            String, // prototipo
             Uuid,
             String,
             RubricType, // rubric
@@ -69,7 +67,7 @@ pub async fn list_asignaciones(
     >(
         r#"
         SELECT
-            p.id, p.folio, p.nombre, p.plantel,
+            p.id, p.folio, p.nombre,
             r.id, r.nombre, r.tipo,
             e.id, e.submitted_at
         FROM assignments a
@@ -80,7 +78,7 @@ pub async fn list_asignaciones(
          AND e.template_id  = a.template_id
          AND e.jurado_id    = a.jurado_id
         WHERE a.jurado_id = $1
-        ORDER BY p.folio, r.nombre
+        ORDER BY (e.submitted_at IS NOT NULL), p.folio, r.nombre
         "#,
     )
     .bind(user.id)
@@ -95,7 +93,6 @@ pub async fn list_asignaciones(
                 p_id,
                 p_folio,
                 p_nombre,
-                p_plantel,
                 r_id,
                 r_nombre,
                 r_tipo,
@@ -107,7 +104,6 @@ pub async fn list_asignaciones(
                         id: p_id,
                         folio: p_folio,
                         nombre: p_nombre,
-                        plantel: p_plantel,
                     },
                     rubric: RubricSummary {
                         id: r_id,

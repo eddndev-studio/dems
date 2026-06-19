@@ -57,7 +57,6 @@ async fn create_prototipo_with_categorias_and_integrantes(pool: PgPool) {
             "edition_id": e,
             "folio": "CECYT-01-2024",
             "nombre": "Sistema X",
-            "plantel": "CECyT 9",
             "eje_transversal": true,
             "descripcion": "Plataforma de foo",
             "categorias": [cat1, cat2],
@@ -190,12 +189,11 @@ async fn patch_updates_metadata(pool: PgPool) {
         "PATCH",
         &format!("/admin/prototipos/{pid}"),
         Some(&tok),
-        Some(json!({ "nombre": "Nuevo", "plantel": "CECyT 5" })),
+        Some(json!({ "nombre": "Nuevo" })),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["nombre"], "Nuevo");
-    assert_eq!(body["plantel"], "CECyT 5");
 }
 
 #[sqlx::test(migrations = "../../migrations")]

@@ -65,8 +65,9 @@ class _AsignacionCardState extends State<AsignacionCard> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  item.prototipo.plantel ?? 'Plantel no asignado',
-                  style: text.bodySmall?.copyWith(
+                  'Folio: ${item.prototipo.folio}',
+                  style: TextStyle(
+                    fontSize: 12,
                     color: AppColors.textTertiary,
                   ),
                   maxLines: 1,

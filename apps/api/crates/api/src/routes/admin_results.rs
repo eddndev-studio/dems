@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::fmt::Write as _;
 use utoipa::ToSchema;
 use uuid::Uuid;
+use rust_xlsxwriter::{Workbook, Format, FormatBorder, FormatAlign};
 
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::RequireAdmin;
@@ -249,29 +250,26 @@ pub async fn by_categoria(
 }
 
 // ---------------------------------------------------------------------------
-// GET /admin/results/edition/:id/export.csv
+// GET /admin/results/edition/:id/export.xlsx
 // ---------------------------------------------------------------------------
 
-/// CSV con todos los prototipos de la edición. Una fila por (categoría,
-/// prototipo). Promedio sobre evaluaciones submitted del rubric_type
-/// solicitado.
 #[utoipa::path(
     get,
-    path = "/admin/results/edition/{id}/export.csv",
+    path = "/admin/results/edition/{id}/export.xlsx",
     tag = "admin/results",
     params(
         ("id" = Uuid, Path, description = "ID de la edición"),
         ("rubric_type" = Option<String>, Query, description = "exhibicion (default) | memoria"),
     ),
     responses(
-        (status = 200, description = "CSV de resultados", content_type = "text/csv"),
+        (status = 200, description = "Excel de resultados", content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
         (status = 400, description = "rubric_type inválido"),
         (status = 403, description = "Sólo admin"),
         (status = 404, description = "Edición no encontrada"),
     ),
     security(("bearer_auth" = [])),
 )]
-pub async fn export_csv(
+pub async fn export_excel(
     State(state): State<AppState>,
     _: RequireAdmin,
     Path(edition_id): Path<Uuid>,
@@ -307,7 +305,7 @@ pub async fn export_csv(
             )
             AND c.kind IN ('scale', 'boolean')
         ), 0)
-        "#,
+        "#
     )
     .bind(edition_id)
     .bind(rubric_type)
@@ -315,8 +313,7 @@ pub async fn export_csv(
     .await
     .map_err(|e| ApiError::Internal(e.into()))?;
 
-    // Una fila por (categoria, prototipo). Promedio sobre evals submitted del
-    // tipo solicitado. LEFT JOIN para incluir prototipos sin evaluaciones.
+    // Ranking General
     let rows = sqlx::query_as::<_, (String, String, String, String, i64, Option<f64>)>(
         r#"
         WITH ev_totals AS (
@@ -350,43 +347,118 @@ pub async fn export_csv(
     .await
     .map_err(|e| ApiError::Internal(e.into()))?;
 
-    let mut body = String::new();
-    body.push_str("categoria_slug,categoria,folio,prototipo,n_jurados,promedio,max_total\n");
-    for (slug, nombre_cat, folio, nombre_p, n, promedio) in rows {
-        let _ = write!(
-            body,
-            "{},{},{},{},{},{},{}\n",
-            csv_escape(&slug),
-            csv_escape(&nombre_cat),
-            csv_escape(&folio),
-            csv_escape(&nombre_p),
-            n,
-            promedio
-                .map(|v| {
-                    // Imprimir enteros sin .0 cuando el promedio es exacto.
-                    if (v.fract()).abs() < f64::EPSILON {
-                        format!("{}", v as i64)
-                    } else {
-                        format!("{v}")
-                    }
-                })
-                .unwrap_or_default(),
-            max_total,
-        );
+    // Desglose por Jurados
+    let jurados_rows = sqlx::query_as::<_, (String, String, String, String, i64, DateTime<Utc>)>(
+        r#"
+        SELECT
+            cat.nombre AS categoria,
+            p.folio,
+            p.nombre AS prototipo,
+            u.full_name AS jurado,
+            COALESCE(SUM(es.score)::BIGINT, 0) AS total,
+            ev.submitted_at
+        FROM evaluaciones ev
+        JOIN prototipos p ON p.id = ev.prototipo_id
+        JOIN prototipo_categorias pc ON pc.prototipo_id = p.id
+        JOIN categorias cat ON cat.id = pc.categoria_id
+        JOIN users u ON u.id = ev.jurado_id
+        LEFT JOIN evaluacion_scores es ON es.evaluacion_id = ev.id
+        WHERE ev.submitted_at IS NOT NULL
+          AND p.edition_id = $1
+          AND ev.template_id IN (
+              SELECT id FROM rubric_templates
+              WHERE edition_id = $1 AND tipo = $2::rubric_type AND activo
+          )
+        GROUP BY cat.nombre, p.folio, p.nombre, u.full_name, ev.submitted_at, cat.orden
+        ORDER BY cat.orden, p.folio, u.full_name
+        "#
+    )
+    .bind(edition_id)
+    .bind(rubric_type)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    let mut workbook = Workbook::new();
+    
+    let header_format = Format::new()
+        .set_bold()
+        .set_border(FormatBorder::Thin)
+        .set_background_color(rust_xlsxwriter::Color::RGB(0xD9E1F2))
+        .set_align(FormatAlign::Center);
+
+    let cell_format = Format::new().set_border(FormatBorder::Thin);
+
+    // Hoja 1: Ranking General
+    let ws1 = workbook.add_worksheet().set_name("Ranking General").map_err(|e| ApiError::Internal(e.into()))?;
+    ws1.write_string_with_format(0, 0, "Categoría", &header_format).unwrap();
+    ws1.write_string_with_format(0, 1, "Folio", &header_format).unwrap();
+    ws1.write_string_with_format(0, 2, "Prototipo", &header_format).unwrap();
+    ws1.write_string_with_format(0, 3, "N° Jurados", &header_format).unwrap();
+    ws1.write_string_with_format(0, 4, "Promedio", &header_format).unwrap();
+    ws1.write_string_with_format(0, 5, "Max Total", &header_format).unwrap();
+
+    ws1.set_column_width(0, 20).unwrap();
+    ws1.set_column_width(1, 15).unwrap();
+    ws1.set_column_width(2, 40).unwrap();
+    ws1.set_column_width(3, 12).unwrap();
+    ws1.set_column_width(4, 12).unwrap();
+    ws1.set_column_width(5, 12).unwrap();
+
+    for (i, row) in rows.iter().enumerate() {
+        let r = (i + 1) as u32;
+        ws1.write_string_with_format(r, 0, &row.1, &cell_format).unwrap();
+        ws1.write_string_with_format(r, 1, &row.2, &cell_format).unwrap();
+        ws1.write_string_with_format(r, 2, &row.3, &cell_format).unwrap();
+        ws1.write_number_with_format(r, 3, row.4 as f64, &cell_format).unwrap();
+        if let Some(promedio) = row.5 {
+            ws1.write_number_with_format(r, 4, promedio, &cell_format).unwrap();
+        } else {
+            ws1.write_string_with_format(r, 4, "", &cell_format).unwrap();
+        }
+        ws1.write_number_with_format(r, 5, max_total as f64, &cell_format).unwrap();
     }
+
+    // Hoja 2: Desglose por Jurados
+    let ws2 = workbook.add_worksheet().set_name("Desglose por Jurados").map_err(|e| ApiError::Internal(e.into()))?;
+    ws2.write_string_with_format(0, 0, "Categoría", &header_format).unwrap();
+    ws2.write_string_with_format(0, 1, "Folio", &header_format).unwrap();
+    ws2.write_string_with_format(0, 2, "Prototipo", &header_format).unwrap();
+    ws2.write_string_with_format(0, 3, "Jurado", &header_format).unwrap();
+    ws2.write_string_with_format(0, 4, "Total", &header_format).unwrap();
+    ws2.write_string_with_format(0, 5, "Fecha Evaluación", &header_format).unwrap();
+
+    ws2.set_column_width(0, 20).unwrap();
+    ws2.set_column_width(1, 15).unwrap();
+    ws2.set_column_width(2, 40).unwrap();
+    ws2.set_column_width(3, 30).unwrap();
+    ws2.set_column_width(4, 10).unwrap();
+    ws2.set_column_width(5, 20).unwrap();
+
+    for (i, row) in jurados_rows.iter().enumerate() {
+        let r = (i + 1) as u32;
+        ws2.write_string_with_format(r, 0, &row.0, &cell_format).unwrap();
+        ws2.write_string_with_format(r, 1, &row.1, &cell_format).unwrap();
+        ws2.write_string_with_format(r, 2, &row.2, &cell_format).unwrap();
+        ws2.write_string_with_format(r, 3, &row.3, &cell_format).unwrap();
+        ws2.write_number_with_format(r, 4, row.4 as f64, &cell_format).unwrap();
+        ws2.write_string_with_format(r, 5, &row.5.format("%Y-%m-%d %H:%M:%S").to_string(), &cell_format).unwrap();
+    }
+
+    let buf = workbook.save_to_buffer().map_err(|e| ApiError::Internal(e.into()))?;
 
     let mut headers = HeaderMap::new();
     headers.insert(
         header::CONTENT_TYPE,
-        HeaderValue::from_static("text/csv; charset=utf-8"),
+        HeaderValue::from_static("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
     );
-    let filename = format!("resultados-edicion-{year}-{rubric_type}.csv");
+    let filename = format!("resultados-edicion-{year}-{rubric_type}.xlsx");
     headers.insert(
         header::CONTENT_DISPOSITION,
         HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
             .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
     );
-    Ok((headers, body))
+    Ok((headers, buf))
 }
 
 #[derive(Debug, Deserialize)]
@@ -607,28 +679,3 @@ pub async fn final_ranking(
     }))
 }
 
-fn csv_escape(s: &str) -> String {
-    // Defensa contra CSV formula injection: una celda que empieza con =, +, -,
-    // @, TAB o CR puede ejecutarse como fórmula al abrir el CSV en una hoja de
-    // cálculo. La prefijamos con un apóstrofo para neutralizarla.
-    let needs_formula_guard = s
-        .chars()
-        .next()
-        .is_some_and(|c| matches!(c, '=' | '+' | '-' | '@' | '\t' | '\r'));
-    let guarded = if needs_formula_guard {
-        format!("'{s}")
-    } else {
-        s.to_string()
-    };
-
-    if guarded.contains(',')
-        || guarded.contains('"')
-        || guarded.contains('\n')
-        || guarded.contains('\r')
-    {
-        let escaped = guarded.replace('"', "\"\"");
-        format!("\"{escaped}\"")
-    } else {
-        guarded
-    }
-}

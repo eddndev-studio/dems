@@ -97,7 +97,6 @@ CREATE TABLE prototipos (
     edition_id          UUID NOT NULL REFERENCES editions(id) ON DELETE RESTRICT,
     folio               TEXT NOT NULL,
     nombre              TEXT NOT NULL,
-    plantel             TEXT,
     eje_transversal     BOOLEAN NOT NULL DEFAULT FALSE,
     descripcion         TEXT,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),

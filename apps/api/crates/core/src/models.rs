@@ -125,7 +125,6 @@ pub struct Prototipo {
     pub edition_id: Uuid,
     pub folio: String,
     pub nombre: String,
-    pub plantel: Option<String>,
     pub eje_transversal: bool,
     pub created_at: DateTime<Utc>,
 }

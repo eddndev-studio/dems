@@ -40,7 +40,6 @@ class _PrototipoFormDialogState extends ConsumerState<PrototipoFormDialog> {
   final _form = GlobalKey<FormState>();
   late final TextEditingController _folio;
   late final TextEditingController _nombre;
-  late final TextEditingController _plantel;
   late final TextEditingController _descripcion;
   String? _editionId;
   bool _ejeTransversal = false;
@@ -58,7 +57,6 @@ class _PrototipoFormDialogState extends ConsumerState<PrototipoFormDialog> {
     final p = widget.initial;
     _folio = TextEditingController(text: p?.folio ?? '');
     _nombre = TextEditingController(text: p?.nombre ?? '');
-    _plantel = TextEditingController(text: p?.plantel ?? '');
     _descripcion = TextEditingController(text: '');
     _editionId = p?.editionId;
     _ejeTransversal = p?.ejeTransversal ?? false;
@@ -68,7 +66,6 @@ class _PrototipoFormDialogState extends ConsumerState<PrototipoFormDialog> {
   void dispose() {
     _folio.dispose();
     _nombre.dispose();
-    _plantel.dispose();
     _descripcion.dispose();
     super.dispose();
   }
@@ -103,7 +100,6 @@ class _PrototipoFormDialogState extends ConsumerState<PrototipoFormDialog> {
           ? await ctrl.patch(
               widget.initial!.id,
               nombre: _nombre.text.trim(),
-              plantel: _plantel.text.trim(),
               ejeTransversal: _ejeTransversal,
               descripcion: _descripcion.text.trim(),
             )
@@ -111,9 +107,6 @@ class _PrototipoFormDialogState extends ConsumerState<PrototipoFormDialog> {
               editionId: _editionId!,
               folio: _folio.text.trim(),
               nombre: _nombre.text.trim(),
-              plantel: _plantel.text.trim().isEmpty
-                  ? null
-                  : _plantel.text.trim(),
               ejeTransversal: _ejeTransversal,
               descripcion: _descripcion.text.trim().isEmpty
                   ? null
@@ -213,14 +206,6 @@ class _PrototipoFormDialogState extends ConsumerState<PrototipoFormDialog> {
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 14),
-                _Labeled(
-                  label: 'Plantel (opcional)',
-                  child: TextFormField(
-                    controller: _plantel,
-                    decoration: _decoration(hint: 'CECyT 9'),
-                  ),
                 ),
                 const SizedBox(height: 14),
                 _Labeled(

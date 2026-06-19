@@ -349,8 +349,7 @@ class _PrototipoExpansionState extends ConsumerState<_PrototipoExpansion> {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          '${widget.prototipo.plantel ?? "Sin plantel"}'
-                          '${edition != null ? "  ·  ${edition.year}" : ""}',
+                          edition != null ? "Edición: ${edition.year}" : "Sin edición",
                           style: TextStyle(
                             fontSize: 12,
                             color: AppColors.textTertiary,

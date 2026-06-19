@@ -124,8 +124,8 @@ pub fn router(state: AppState) -> Router {
             get(admin_results::by_categoria),
         )
         .route(
-            "/admin/results/edition/:id/export.csv",
-            get(admin_results::export_csv),
+            "/admin/results/edition/:id/export.xlsx",
+            get(admin_results::export_excel),
         )
         .route(
             "/admin/evaluaciones/:id/reopen",
