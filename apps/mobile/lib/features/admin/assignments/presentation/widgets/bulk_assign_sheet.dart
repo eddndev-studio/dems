@@ -17,6 +17,8 @@ class BulkAssignSelection {
     required this.juradoIds,
   });
 
+  /// Edición elegida. Sólo se usa en la UI para acotar la lista de rúbricas;
+  /// la API NO la recibe (deriva la edición del `template_id`).
   final String editionId;
   final String categoriaId;
   final String templateId;
@@ -139,17 +141,22 @@ class _BulkAssignSheetState extends ConsumerState<BulkAssignSheet> {
                         child: editions.when(
                           loading: () => const _Loading(),
                           error: (e, _) => _Err('No se pudieron cargar las ediciones.'),
-                          data: (list) => _ChipRow(
-                            options: [
-                              for (final e in list)
-                                (e.id, '${e.year}${e.active ? " • activa" : ""}')
-                            ],
-                            selectedId: _editionId,
-                            onSelect: (id) => setState(() {
-                              _editionId = id;
-                              _templateId = null; // las rúbricas dependen de la edición
-                            }),
-                          ),
+                          data: (list) {
+                            if (list.isEmpty) {
+                              return _Err('No hay ediciones registradas.');
+                            }
+                            return _ChipRow(
+                              options: [
+                                for (final e in list)
+                                  (e.id, '${e.year}${e.active ? " • activa" : ""}')
+                              ],
+                              selectedId: _editionId,
+                              onSelect: (id) => setState(() {
+                                _editionId = id;
+                                _templateId = null; // rúbricas dependen de la edición
+                              }),
+                            );
+                          },
                         ),
                       ),
                       const SizedBox(height: 14),

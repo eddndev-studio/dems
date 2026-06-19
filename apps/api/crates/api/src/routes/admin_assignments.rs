@@ -265,38 +265,37 @@ pub async fn bulk(
         )));
     }
 
-    // Prototipos de la categoría en la edición del template.
-    let prototipos: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*) FROM prototipos p
-           JOIN prototipo_categorias pc ON pc.prototipo_id = p.id
-           WHERE p.edition_id = $1 AND pc.categoria_id = $2"#,
-    )
-    .bind(edition_id)
-    .bind(req.categoria_id)
-    .fetch_one(&state.pool)
-    .await
-    .map_err(|e| ApiError::Internal(e.into()))?;
-
-    // Inserción masiva del producto (jurado × prototipo), idempotente.
-    let created = sqlx::query(
-        r#"INSERT INTO assignments (jurado_id, prototipo_id, template_id)
-           SELECT j.id, proto.id, $3
-           FROM unnest($1::uuid[]) AS j(id)
-           CROSS JOIN (
-               SELECT p.id FROM prototipos p
-               JOIN prototipo_categorias pc ON pc.prototipo_id = p.id
-               WHERE p.edition_id = $4 AND pc.categoria_id = $2
-           ) AS proto
-           ON CONFLICT (jurado_id, prototipo_id, template_id) DO NOTHING"#,
+    // Una sola sentencia (mismo snapshot, sin carrera entre contar e insertar):
+    // cuenta los prototipos de la categoría en la edición e inserta el producto
+    // (jurado × prototipo) de forma idempotente. Devuelve
+    // (prototipos_en_categoria, asignaciones_realmente_creadas).
+    let (prototipos, created): (i64, i64) = sqlx::query_as(
+        r#"
+        WITH protos AS (
+            SELECT p.id FROM prototipos p
+            JOIN prototipo_categorias pc ON pc.prototipo_id = p.id
+            WHERE p.edition_id = $4 AND pc.categoria_id = $2
+        ),
+        ins AS (
+            INSERT INTO assignments (jurado_id, prototipo_id, template_id)
+            SELECT j.id, protos.id, $3
+            FROM unnest($1::uuid[]) AS j(id)
+            CROSS JOIN protos
+            ON CONFLICT (jurado_id, prototipo_id, template_id) DO NOTHING
+            RETURNING 1
+        )
+        SELECT
+            (SELECT COUNT(*) FROM protos)::BIGINT,
+            (SELECT COUNT(*) FROM ins)::BIGINT
+        "#,
     )
     .bind(&jurado_ids)
     .bind(req.categoria_id)
     .bind(req.template_id)
     .bind(edition_id)
-    .execute(&state.pool)
+    .fetch_one(&state.pool)
     .await
-    .map_err(|e| ApiError::Internal(e.into()))?
-    .rows_affected() as i64;
+    .map_err(|e| ApiError::Internal(e.into()))?;
 
     let jurados = jurado_ids.len() as i64;
     let attempted = jurados * prototipos;

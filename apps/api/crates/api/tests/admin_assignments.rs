@@ -11,8 +11,8 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 use common::{
-    admin, attach_categoria, build_app, insert_prototipo, insert_user, jurado, seed_categoria,
-    seed_edition, seed_rubric_template,
+    admin, assign_jurado, attach_categoria, build_app, insert_prototipo, insert_user, jurado,
+    seed_categoria, seed_edition, seed_rubric_template,
 };
 
 async fn request(
@@ -390,6 +390,60 @@ async fn bulk_rejects_unknown_categoria(pool: PgPool) {
         "/admin/assignments/bulk",
         Some(&tok),
         Some(json!({ "categoria_id": Uuid::new_v4(), "template_id": r, "jurado_ids": jurados })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn bulk_partial_overlap_counts_only_new(pool: PgPool) {
+    let (_, tok) = admin(&pool).await;
+    let (cat_a, _cat_b, r, jurados) = bulk_setup(&pool, 2).await;
+
+    // Pre-sembramos UNA pareja (jurado0, un prototipo de la categoría A).
+    let p_existing: Uuid = sqlx::query_scalar(
+        "SELECT prototipo_id FROM prototipo_categorias WHERE categoria_id = $1 LIMIT 1",
+    )
+    .bind(cat_a)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assign_jurado(&pool, jurados[0], p_existing, r).await;
+
+    let (status, body) = request(
+        pool.clone(),
+        "POST",
+        "/admin/assignments/bulk",
+        Some(&tok),
+        Some(json!({ "categoria_id": cat_a, "template_id": r, "jurado_ids": jurados })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    // 2 prototipos × 2 jurados = 4 intentadas, 1 ya existía → 3 nuevas, 1 saltada.
+    assert_eq!(body["created"], json!(3), "body: {body}");
+    assert_eq!(body["skipped"], json!(1));
+    assert_eq!(body["prototipos"], json!(2));
+
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM assignments")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(total, 4);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn bulk_rejects_unknown_template(pool: PgPool) {
+    let (_, tok) = admin(&pool).await;
+    let (cat_a, _cat_b, _r, jurados) = bulk_setup(&pool, 1).await;
+
+    let (status, _) = request(
+        pool,
+        "POST",
+        "/admin/assignments/bulk",
+        Some(&tok),
+        Some(
+            json!({ "categoria_id": cat_a, "template_id": Uuid::new_v4(), "jurado_ids": jurados }),
+        ),
     )
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);

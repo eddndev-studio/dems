@@ -196,6 +196,12 @@ class _BulkAssignBarState extends ConsumerState<_BulkAssignBar> {
       initialEditionId: filter.editionId,
     );
     if (sel == null || !mounted) return;
+    // Capturamos el container ANTES del await: si el sheet/página se desmonta
+    // mientras la petición está en vuelo, invalidar vía `ref` (ligado al State)
+    // lanzaría StateError; el container sigue vivo, así que la invalidación
+    // corre igual — la escritura en el servidor ya ocurrió y las cachés quedan
+    // obsoletas de todos modos.
+    final container = ProviderScope.containerOf(context, listen: false);
     setState(() => _busy = true);
     try {
       final res = await ref.read(adminAssignmentsRepositoryProvider).bulkAssign(
@@ -205,8 +211,8 @@ class _BulkAssignBarState extends ConsumerState<_BulkAssignBar> {
           );
       // Las cachés por prototipo y el listado quedan obsoletas tras la
       // asignación masiva: invalidamos para que los conteos se refresquen.
-      ref.invalidate(prototipoAssignmentsControllerProvider);
-      ref.invalidate(adminPrototiposControllerProvider);
+      container.invalidate(prototipoAssignmentsControllerProvider);
+      container.invalidate(adminPrototiposControllerProvider);
       if (mounted) {
         final msg = res.prototipos == 0
             ? 'La categoría no tiene prototipos en esta edición.'
